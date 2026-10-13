@@ -1,0 +1,45 @@
+name: Build
+
+# GCDWebServer, ported to GNUstep, built, tested and installed the familiar
+# way (make, make check, make install; Makefile.apple on macOS and iOS) by
+# gnustep-release-actions' workflows, the same as every repository's. Every
+# push builds and tests it and uploads what it installs: on Linux the library
+# and its headers, as an archive for what builds on it (x86_64, aarch64); on
+# Apple GCDWebServer.xcframework. A v* tag (or a run started by hand with one)
+# also attaches them to the tag's release, where what builds on it
+# (GCDWEBSERVER_VERSION in its .github/pins.env) finds them. What it builds on
+# is in .github/pins.env.
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'A v* tag to build and release (empty: this branch, as artifacts)'
+        required: false
+        default: ''
+
+# Pushes only: a push to a branch already shows its checks on the branch's
+# pull request. A newer push supersedes the run before it; a release is
+# never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    uses: ashalkhakov/gnustep-release-actions/.github/workflows/linux.yml@v1
+    with:
+      tag: ${{ inputs.tag }}
+      library: true
+
+  macos:
+    uses: ashalkhakov/gnustep-release-actions/.github/workflows/macos.yml@v1
+    with:
+      tag: ${{ inputs.tag }}
+      library: true
+    secrets: inherit

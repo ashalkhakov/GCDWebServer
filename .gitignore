@@ -3,3 +3,7 @@ xcuserdata
 project.xcworkspace
 /build
 /Carthage/Build
+build/
+obj/
+*.d
+.deps/

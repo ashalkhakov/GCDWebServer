@@ -1,3 +1,9 @@
+> **This is ashalkhakov's fork**, for GNUstep: the `gnustep` branch is
+> release 3.5.4 ported to GNUstep on Linux (and still macOS and iOS), built as
+> a library for ODataKit's HTTPServerKit. Upstream is archived. See
+> [PORTING.md](PORTING.md) for what changed and how it is built and released;
+> the rest of this README is upstream's.
+
 Overview
 ========
 
