@@ -1,0 +1,64 @@
+# GCDWebServer on macOS and iOS, the library, built, tested and installed the
+# familiar way (gnustep-release-actions runs these):
+#
+#   make -f Makefile.apple                       the static library, for macOS,
+#                                                iOS and the simulator
+#   make -f Makefile.apple check                 the smoke test, and the
+#                                                CFHTTPMessage replacement
+#                                                compared with CFNetwork
+#   make -f Makefile.apple install DESTDIR=...   GCDWebServer.xcframework, the
+#                                                headers in GCDWebServer/
+#                                                (#import <GCDWebServer/GCDWebServer.h>)
+#
+# A user links the frameworks it needs: Foundation, SystemConfiguration and
+# CoreServices on macOS (MobileCoreServices and UIKit on iOS), and libz.
+B         := build
+SOURCES   := $(wildcard GCDWebServer/Core/*.m GCDWebServer/Requests/*.m GCDWebServer/Responses/*.m)
+HEADERS   := GCDWebServer/Core/GCDWebServer.h GCDWebServer/Core/GCDWebServerConnection.h \
+	GCDWebServer/Core/GCDWebServerFunctions.h GCDWebServer/Core/GCDWebServerHTTPStatusCodes.h \
+	GCDWebServer/Core/GCDWebServerRequest.h GCDWebServer/Core/GCDWebServerResponse.h \
+	GCDWebServer/Requests/GCDWebServerDataRequest.h GCDWebServer/Requests/GCDWebServerFileRequest.h \
+	GCDWebServer/Requests/GCDWebServerMultiPartFormRequest.h GCDWebServer/Requests/GCDWebServerURLEncodedFormRequest.h \
+	GCDWebServer/Responses/GCDWebServerDataResponse.h GCDWebServer/Responses/GCDWebServerErrorResponse.h \
+	GCDWebServer/Responses/GCDWebServerFileResponse.h GCDWebServer/Responses/GCDWebServerStreamedResponse.h
+INCLUDES  := -IGCDWebServer/Core -IGCDWebServer/Requests -IGCDWebServer/Responses
+CFLAGS    := -fobjc-arc -fblocks -fobjc-exceptions -fmodules -O2 -Wall
+FLAGS_macos     := -arch arm64 -arch x86_64 -isysroot $(shell xcrun --sdk macosx --show-sdk-path) -mmacosx-version-min=11.0
+FLAGS_device    := -arch arm64 -isysroot $(shell xcrun --sdk iphoneos --show-sdk-path) -miphoneos-version-min=15.0
+FLAGS_simulator := -arch arm64 -arch x86_64 -isysroot $(shell xcrun --sdk iphonesimulator --show-sdk-path) -mios-simulator-version-min=15.0
+MACOS_LIBS := -framework Foundation -framework SystemConfiguration -framework CoreServices -lz
+
+.PHONY: all check cfcompare install clean
+all: $(B)/GCDWebServer.xcframework
+
+$(B)/%/libGCDWebServer.a: $(SOURCES) $(wildcard GCDWebServer/*/*.h)
+	rm -rf $(@D) && mkdir -p $(@D)/obj
+	for source in $(SOURCES); do \
+	  xcrun clang $(CFLAGS) $(INCLUDES) $(FLAGS_$*) -c $$source -o $(@D)/obj/$$(basename $$source .m).o || exit 1; \
+	done
+	xcrun libtool -static -o $@ $(@D)/obj/*.o
+
+$(B)/GCDWebServer.xcframework: $(B)/macos/libGCDWebServer.a $(B)/device/libGCDWebServer.a $(B)/simulator/libGCDWebServer.a
+	rm -rf $@ $(B)/headers && mkdir -p $(B)/headers/GCDWebServer && cp $(HEADERS) $(B)/headers/GCDWebServer/
+	xcodebuild -create-xcframework \
+	  -library $(B)/macos/libGCDWebServer.a -headers $(B)/headers \
+	  -library $(B)/device/libGCDWebServer.a -headers $(B)/headers \
+	  -library $(B)/simulator/libGCDWebServer.a -headers $(B)/headers \
+	  -output $@
+
+check: $(B)/macos/libGCDWebServer.a cfcompare
+	xcrun clang $(CFLAGS) $(INCLUDES) $(FLAGS_macos) Tests/GNUstep/gws-smoke.m $(B)/macos/libGCDWebServer.a $(MACOS_LIBS) -o $(B)/gws-smoke
+	$(B)/gws-smoke
+
+cfcompare: $(B)/macos/libGCDWebServer.a
+	xcrun clang $(CFLAGS) $(INCLUDES) $(FLAGS_macos) Tests/GNUstep/gws-cfcompare.m $(B)/macos/libGCDWebServer.a \
+	  $(MACOS_LIBS) -framework CFNetwork -o $(B)/gws-cfcompare
+	$(B)/gws-cfcompare
+
+install: all
+	mkdir -p $(DESTDIR)
+	rm -rf $(DESTDIR)/GCDWebServer.xcframework
+	cp -R $(B)/GCDWebServer.xcframework $(DESTDIR)/
+
+clean:
+	rm -rf $(B)
