@@ -25,7 +25,20 @@
  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#if defined(__APPLE__)
 #import <TargetConditionals.h>
+#else
+// ODataStore port: TargetConditionals.h is Apple-only
+#ifndef TARGET_OS_IPHONE
+#define TARGET_OS_IPHONE 0
+#endif
+#ifndef TARGET_IPHONE_SIMULATOR
+#define TARGET_IPHONE_SIMULATOR 0
+#endif
+#ifndef TARGET_OS_TV
+#define TARGET_OS_TV 0
+#endif
+#endif
 
 #import "GCDWebServerRequest.h"
 #import "GCDWebServerResponse.h"
@@ -90,14 +103,14 @@ extern NSString* const GCDWebServerOption_Port;
  *
  *  The default value is nil.
  */
-extern NSString* const GCDWebServerOption_BonjourName;
+extern NSString* const GCDWebServerOption_BonjourName;  // ODataStore port: ignored, Bonjour is compiled out
 
 /**
  *  The Bonjour service type used by the GCDWebServer (NSString).
  *
  *  The default value is "_http._tcp", the service type for HTTP web servers.
  */
-extern NSString* const GCDWebServerOption_BonjourType;
+extern NSString* const GCDWebServerOption_BonjourType;  // ODataStore port: ignored
 
 /**
  *  Request a port mapping in the NAT gateway (NSNumber / BOOL).
@@ -109,7 +122,7 @@ extern NSString* const GCDWebServerOption_BonjourType;
  *  @warning The external port set up by the NAT gateway may be different than
  *  the one used by the GCDWebServer.
  */
-extern NSString* const GCDWebServerOption_RequestNATPortMapping;
+extern NSString* const GCDWebServerOption_RequestNATPortMapping;  // ODataStore port: ignored, NAT port mapping is compiled out
 
 /**
  *  Only accept HTTP requests coming from localhost i.e. not from the outside
@@ -194,6 +207,58 @@ extern NSString* const GCDWebServerOption_ConnectedStateCoalescingInterval;
  */
 extern NSString* const GCDWebServerOption_DispatchQueuePriority;
 
+/**
+ *  ODataStore port: the maximum size in bytes of a request head, i.e. the
+ *  request line and header fields (NSNumber / NSUInteger). Larger heads are
+ *  answered with 431 Request Header Fields Too Large and the connection is
+ *  closed.
+ *
+ *  The default value is 64 KiB.
+ */
+extern NSString* const GCDWebServerOption_MaxHeadSize;
+
+/**
+ *  ODataStore port: the maximum size in bytes of a request body as received
+ *  on the wire (NSNumber / NSUInteger). A larger Content-Length is answered
+ *  with 413 Content Too Large before the body is read; a chunked body is
+ *  answered with 413 as soon as it goes over the limit. 0 means no limit.
+ *
+ *  The default value is 64 MiB.
+ */
+extern NSString* const GCDWebServerOption_MaxBodySize;
+
+/**
+ *  ODataStore port: the time in seconds a client has to send the complete
+ *  request, head and body, from the moment the connection is accepted
+ *  (NSNumber / double). When it runs out the server answers 408 Request
+ *  Timeout and closes the connection. 0 disables the timeout.
+ *
+ *  The default value is 60 seconds.
+ */
+extern NSString* const GCDWebServerOption_ReadTimeout;
+
+/**
+ *  ODataStore port: how long in seconds a connection is kept open for the
+ *  next request once a response has been sent (NSNumber / double), as
+ *  HTTP/1.1 persistent connections are. A connection is kept only for an
+ *  HTTP/1.1 request that does not ask to close, whose body was not chunked
+ *  and after which nothing more arrived with it, and whose response says its
+ *  length; any other is closed as before. A kept connection that receives
+ *  nothing in this time is closed without an answer. 0 closes every
+ *  connection after its response.
+ *
+ *  The default value is 0.
+ */
+extern NSString* const GCDWebServerOption_KeepAliveTimeout;
+
+/**
+ *  ODataStore port: how many requests one kept connection answers before it
+ *  is closed (NSNumber / NSUInteger); 0 for no limit.
+ *
+ *  The default value is 100.
+ */
+extern NSString* const GCDWebServerOption_MaxRequestsPerConnection;
+
 #if TARGET_OS_IPHONE
 
 /**
@@ -223,7 +288,7 @@ extern NSString* const GCDWebServerAuthenticationMethod_Basic;
 /**
  *  HTTP Digest Access Authentication scheme (see https://tools.ietf.org/html/rfc2617).
  */
-extern NSString* const GCDWebServerAuthenticationMethod_DigestAccess;
+extern NSString* const GCDWebServerAuthenticationMethod_DigestAccess;  // ODataStore port: compiled out; -startWithOptions:error: fails if requested
 
 @class GCDWebServer;
 

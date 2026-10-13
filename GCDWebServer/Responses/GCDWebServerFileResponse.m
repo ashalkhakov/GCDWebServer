@@ -131,8 +131,13 @@ static inline NSDate* _NSDateFromTimeSpec(const struct timespec* t) {
 
     self.contentType = GCDWebServerGetMimeTypeForExtension([_path pathExtension], overrides);
     self.contentLength = _size;
+#if defined(__APPLE__)
     self.lastModifiedDate = _NSDateFromTimeSpec(&info.st_mtimespec);
     self.eTag = [NSString stringWithFormat:@"%llu/%li/%li", info.st_ino, info.st_mtimespec.tv_sec, info.st_mtimespec.tv_nsec];
+#else
+    self.lastModifiedDate = _NSDateFromTimeSpec(&info.st_mtim);  // ODataStore port: POSIX name
+    self.eTag = [NSString stringWithFormat:@"%llu/%li/%li", (unsigned long long)info.st_ino, (long)info.st_mtim.tv_sec, (long)info.st_mtim.tv_nsec];
+#endif
   }
   return self;
 }

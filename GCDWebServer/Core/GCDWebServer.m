@@ -29,7 +29,9 @@
 #error GCDWebServer requires ARC
 #endif
 
+#if defined(__APPLE__)
 #import <TargetConditionals.h>
+#endif
 #if TARGET_OS_IPHONE
 #import <UIKit/UIKit.h>
 #else
@@ -38,7 +40,10 @@
 #endif
 #endif
 #import <netinet/in.h>
+#if defined(__APPLE__)
 #import <dns_sd.h>
+#endif
+#import <signal.h>
 
 #import "GCDWebServerPrivate.h"
 
@@ -64,6 +69,11 @@ NSString* const GCDWebServerOption_ConnectionClass = @"ConnectionClass";
 NSString* const GCDWebServerOption_AutomaticallyMapHEADToGET = @"AutomaticallyMapHEADToGET";
 NSString* const GCDWebServerOption_ConnectedStateCoalescingInterval = @"ConnectedStateCoalescingInterval";
 NSString* const GCDWebServerOption_DispatchQueuePriority = @"DispatchQueuePriority";
+NSString* const GCDWebServerOption_MaxHeadSize = @"MaxHeadSize";
+NSString* const GCDWebServerOption_MaxBodySize = @"MaxBodySize";
+NSString* const GCDWebServerOption_ReadTimeout = @"ReadTimeout";
+NSString* const GCDWebServerOption_KeepAliveTimeout = @"KeepAliveTimeout";  // ODataStore port
+NSString* const GCDWebServerOption_MaxRequestsPerConnection = @"MaxRequestsPerConnection";  // ODataStore port
 #if TARGET_OS_IPHONE
 NSString* const GCDWebServerOption_AutomaticallySuspendInBackground = @"AutomaticallySuspendInBackground";
 #endif
@@ -72,11 +82,7 @@ NSString* const GCDWebServerAuthenticationMethod_Basic = @"Basic";
 NSString* const GCDWebServerAuthenticationMethod_DigestAccess = @"DigestAccess";
 
 #if defined(__GCDWEBSERVER_LOGGING_FACILITY_BUILTIN__)
-#if DEBUG
-GCDWebServerLoggingLevel GCDWebServerLogLevel = kGCDWebServerLoggingLevel_Debug;
-#else
-GCDWebServerLoggingLevel GCDWebServerLogLevel = kGCDWebServerLoggingLevel_Info;
-#endif
+GCDWebServerLoggingLevel GCDWebServerLogLevel = kGCDWebServerLoggingLevel_Warning;  // ODataStore port: warnings and errors by default
 #endif
 
 #if !TARGET_OS_IPHONE
@@ -89,20 +95,14 @@ static GCDWebServerBuiltInLoggerBlock _builtInLoggerBlock;
 
 void GCDWebServerLogMessage(GCDWebServerLoggingLevel level, NSString* format, ...) {
   static const char* levelNames[] = {"DEBUG", "VERBOSE", "INFO", "WARNING", "ERROR"};
-  static int enableLogging = -1;
-  if (enableLogging < 0) {
-    enableLogging = (isatty(STDERR_FILENO) ? 1 : 0);
-  }
-  if (_builtInLoggerBlock || enableLogging) {
-    va_list arguments;
-    va_start(arguments, format);
-    NSString* message = [[NSString alloc] initWithFormat:format arguments:arguments];
-    va_end(arguments);
-    if (_builtInLoggerBlock) {
-      _builtInLoggerBlock(level, message);
-    } else {
-      fprintf(stderr, "[%s] %s\n", levelNames[level], [message UTF8String]);
-    }
+  va_list arguments;
+  va_start(arguments, format);
+  NSString* message = [[NSString alloc] initWithFormat:format arguments:arguments];
+  va_end(arguments);
+  if (_builtInLoggerBlock) {
+    _builtInLoggerBlock(level, message);
+  } else {
+    NSLog(@"[GCDWebServer %s] %@", levelNames[level], message);  // ODataStore port: NSLog, also when stderr is not a terminal
   }
 }
 
@@ -123,11 +123,16 @@ static void _SignalHandler(int signal) {
 // https://developer.apple.com/library/mac/documentation/General/Conceptual/ConcurrencyProgrammingGuide/OperationQueues/OperationQueues.html
 // The main queue works with the application’s run loop to interleave the execution of queued tasks with the execution of other event sources attached to the run loop
 // TODO: Ensure all scheduled blocks on the main queue are also executed
-static void _ExecuteMainThreadRunLoopSources() {
+static void _ExecuteMainThreadRunLoopSources(void) {
+#if defined(__APPLE__)
   SInt32 result;
   do {
     result = CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.0, true);
   } while (result == kCFRunLoopRunHandledSource);
+#else
+  // ODataStore port: no CFRunLoop; give the NSRunLoop one non-blocking pass
+  [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode beforeDate:[NSDate distantPast]];
+#endif
 }
 
 #endif
@@ -135,6 +140,8 @@ static void _ExecuteMainThreadRunLoopSources() {
 @implementation GCDWebServerHandler
 
 - (instancetype)initWithMatchBlock:(GCDWebServerMatchBlock _Nonnull)matchBlock asyncProcessBlock:(GCDWebServerAsyncProcessBlock _Nonnull)processBlock {
+  matchBlock = [matchBlock copy];  // ODataStore port: heap-copy block parameters first, see PORTING.md (libobjc2 stack-block leak)
+  processBlock = [processBlock copy];  // ODataStore port: heap-copy block parameters first, see PORTING.md (libobjc2 stack-block leak)
   if ((self = [super init])) {
     _matchBlock = [matchBlock copy];
     _asyncProcessBlock = [processBlock copy];
@@ -150,15 +157,16 @@ static void _ExecuteMainThreadRunLoopSources() {
   NSMutableArray<GCDWebServerHandler*>* _handlers;
   NSInteger _activeConnections;  // Accessed through _syncQueue only
   BOOL _connected;  // Accessed on main thread only
-  CFRunLoopTimerRef _disconnectTimer;  // Accessed on main thread only
+  dispatch_source_t _disconnectTimer;  // Accessed on main thread only (ODataStore port: was a CFRunLoopTimer)
 
   NSDictionary<NSString*, id>* _options;
   NSMutableDictionary<NSString*, NSString*>* _authenticationBasicAccounts;
   NSMutableDictionary<NSString*, NSString*>* _authenticationDigestAccounts;
   Class _connectionClass;
-  CFTimeInterval _disconnectDelay;
+  NSTimeInterval _disconnectDelay;
   dispatch_source_t _source4;
   dispatch_source_t _source6;
+#if __GCDWEBSERVER_ENABLE_BONJOUR_NAT__
   CFNetServiceRef _registrationService;
   CFNetServiceRef _resolutionService;
   DNSServiceRef _dnsService;
@@ -166,6 +174,7 @@ static void _ExecuteMainThreadRunLoopSources() {
   CFRunLoopSourceRef _dnsSource;
   NSString* _dnsAddress;
   NSUInteger _dnsPort;
+#endif
   BOOL _bindToLocalhost;
 #if TARGET_OS_IPHONE
   BOOL _suspendInBackground;
@@ -240,16 +249,26 @@ static void _ExecuteMainThreadRunLoopSources() {
   }
 }
 
+// ODataStore port: the disconnect timer is a dispatch source on the main queue instead of a CFRunLoopTimer
+// Always called on main thread
+- (BOOL)_cancelDisconnectTimer {
+  if (_disconnectTimer == NULL) {
+    return NO;
+  }
+  dispatch_source_cancel(_disconnectTimer);
+#if !OS_OBJECT_USE_OBJC_RETAIN_RELEASE
+  dispatch_release(_disconnectTimer);
+#endif
+  _disconnectTimer = NULL;
+  return YES;
+}
+
 - (void)willStartConnection:(GCDWebServerConnection*)connection {
   dispatch_sync(_syncQueue, ^{
     GWS_DCHECK(self->_activeConnections >= 0);
     if (self->_activeConnections == 0) {
       dispatch_async(dispatch_get_main_queue(), ^{
-        if (self->_disconnectTimer) {
-          CFRunLoopTimerInvalidate(self->_disconnectTimer);
-          CFRelease(self->_disconnectTimer);
-          self->_disconnectTimer = NULL;
-        }
+        [self _cancelDisconnectTimer];
         if (self->_connected == NO) {
           [self _didConnect];
         }
@@ -299,17 +318,15 @@ static void _ExecuteMainThreadRunLoopSources() {
     if (self->_activeConnections == 0) {
       dispatch_async(dispatch_get_main_queue(), ^{
         if ((self->_disconnectDelay > 0.0) && (self->_source4 != NULL)) {
-          if (self->_disconnectTimer) {
-            CFRunLoopTimerInvalidate(self->_disconnectTimer);
-            CFRelease(self->_disconnectTimer);
-          }
-          self->_disconnectTimer = CFRunLoopTimerCreateWithHandler(kCFAllocatorDefault, CFAbsoluteTimeGetCurrent() + self->_disconnectDelay, 0.0, 0, 0, ^(CFRunLoopTimerRef timer) {
+          [self _cancelDisconnectTimer];
+          self->_disconnectTimer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
+          dispatch_source_set_timer(self->_disconnectTimer, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(self->_disconnectDelay * NSEC_PER_SEC)), DISPATCH_TIME_FOREVER, 0);
+          dispatch_source_set_event_handler(self->_disconnectTimer, ^{
             GWS_DCHECK([NSThread isMainThread]);
             [self _didDisconnect];
-            CFRelease(self->_disconnectTimer);
-            self->_disconnectTimer = NULL;
+            [self _cancelDisconnectTimer];
           });
-          CFRunLoopAddTimer(CFRunLoopGetMain(), self->_disconnectTimer, kCFRunLoopCommonModes);
+          dispatch_resume(self->_disconnectTimer);
         } else {
           [self _didDisconnect];
         }
@@ -319,16 +336,26 @@ static void _ExecuteMainThreadRunLoopSources() {
 }
 
 - (NSString*)bonjourName {
+#if !__GCDWEBSERVER_ENABLE_BONJOUR_NAT__
+  return nil;
+#else
   CFStringRef name = _resolutionService ? CFNetServiceGetName(_resolutionService) : NULL;
   return name && CFStringGetLength(name) ? CFBridgingRelease(CFStringCreateCopy(kCFAllocatorDefault, name)) : nil;
+#endif
 }
 
 - (NSString*)bonjourType {
+#if !__GCDWEBSERVER_ENABLE_BONJOUR_NAT__
+  return nil;
+#else
   CFStringRef type = _resolutionService ? CFNetServiceGetType(_resolutionService) : NULL;
   return type && CFStringGetLength(type) ? CFBridgingRelease(CFStringCreateCopy(kCFAllocatorDefault, type)) : nil;
+#endif
 }
 
 - (void)addHandlerWithMatchBlock:(GCDWebServerMatchBlock)matchBlock processBlock:(GCDWebServerProcessBlock)processBlock {
+  matchBlock = [matchBlock copy];  // ODataStore port: heap-copy block parameters first, see PORTING.md (libobjc2 stack-block leak)
+  processBlock = [processBlock copy];  // ODataStore port: heap-copy block parameters first, see PORTING.md (libobjc2 stack-block leak)
   [self addHandlerWithMatchBlock:matchBlock
                asyncProcessBlock:^(GCDWebServerRequest* request, GCDWebServerCompletionBlock completionBlock) {
                  completionBlock(processBlock(request));
@@ -336,6 +363,8 @@ static void _ExecuteMainThreadRunLoopSources() {
 }
 
 - (void)addHandlerWithMatchBlock:(GCDWebServerMatchBlock)matchBlock asyncProcessBlock:(GCDWebServerAsyncProcessBlock)processBlock {
+  matchBlock = [matchBlock copy];  // ODataStore port: heap-copy block parameters first, see PORTING.md (libobjc2 stack-block leak)
+  processBlock = [processBlock copy];  // ODataStore port: heap-copy block parameters first, see PORTING.md (libobjc2 stack-block leak)
   GWS_DCHECK(_options == nil);
   GCDWebServerHandler* handler = [[GCDWebServerHandler alloc] initWithMatchBlock:matchBlock asyncProcessBlock:processBlock];
   [_handlers insertObject:handler atIndex:0];
@@ -345,6 +374,8 @@ static void _ExecuteMainThreadRunLoopSources() {
   GWS_DCHECK(_options == nil);
   [_handlers removeAllObjects];
 }
+
+#if __GCDWEBSERVER_ENABLE_BONJOUR_NAT__
 
 static void _NetServiceRegisterCallBack(CFNetServiceRef service, CFStreamError* error, void* info) {
   GWS_DCHECK([NSThread isMainThread]);
@@ -414,6 +445,8 @@ static void _SocketCallBack(CFSocketRef s, CFSocketCallBackType type, CFDataRef 
   }
 }
 
+#endif
+
 static inline id _GetOption(NSDictionary<NSString*, id>* options, NSString* key, id defaultValue) {
   id value = [options objectForKey:key];
   return value ? value : defaultValue;
@@ -440,6 +473,11 @@ static inline NSString* _EncodeBase64(NSString* string) {
   if (listeningSocket > 0) {
     int yes = 1;
     setsockopt(listeningSocket, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
+    if (useIPv6) {
+      // ODataStore port: IPv6 only, beside the IPv4 socket; on Linux an IPv6 wildcard socket otherwise takes IPv4 too,
+      // and binding both to the same port fails with EADDRINUSE
+      setsockopt(listeningSocket, IPPROTO_IPV6, IPV6_V6ONLY, &yes, sizeof(yes));
+    }
 
     if (bind(listeningSocket, address, length) == 0) {
       if (listen(listeningSocket, (int)maxPendingConnections) == 0) {
@@ -501,8 +539,10 @@ static inline NSString* _EncodeBase64(NSString* string) {
           GWS_DNOT_REACHED();
         }
 
+#ifdef SO_NOSIGPIPE
         int noSigPipe = 1;
         setsockopt(socket, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, sizeof(noSigPipe));  // Make sure this socket cannot generate SIG_PIPE
+#endif  // ODataStore port: elsewhere SIGPIPE is ignored process-wide in -_start: (libdispatch does the writes, so MSG_NOSIGNAL is not an option)
 
         GCDWebServerConnection* connection = [(GCDWebServerConnection*)[self->_connectionClass alloc] initWithServer:self localAddress:localAddress remoteAddress:remoteAddress socket:socket];  // Connection will automatically retain itself while opened
         [connection self];  // Prevent compiler from complaining about unused variable / useless statement
@@ -523,7 +563,9 @@ static inline NSString* _EncodeBase64(NSString* string) {
 
   struct sockaddr_in addr4;
   bzero(&addr4, sizeof(addr4));
+#if defined(__APPLE__)
   addr4.sin_len = sizeof(addr4);
+#endif
   addr4.sin_family = AF_INET;
   addr4.sin_port = htons(port);
   addr4.sin_addr.s_addr = bindToLocalhost ? htonl(INADDR_LOOPBACK) : htonl(INADDR_ANY);
@@ -543,14 +585,27 @@ static inline NSString* _EncodeBase64(NSString* string) {
 
   struct sockaddr_in6 addr6;
   bzero(&addr6, sizeof(addr6));
+#if defined(__APPLE__)
   addr6.sin6_len = sizeof(addr6);
+#endif
   addr6.sin6_family = AF_INET6;
   addr6.sin6_port = htons(port);
   addr6.sin6_addr = bindToLocalhost ? in6addr_loopback : in6addr_any;
-  int listeningSocket6 = [self _createListeningSocket:YES localAddress:&addr6 length:sizeof(addr6) maxPendingConnections:maxPendingConnections error:error];
+  NSError* error6 = nil;
+  int listeningSocket6 = [self _createListeningSocket:YES localAddress:&addr6 length:sizeof(addr6) maxPendingConnections:maxPendingConnections error:&error6];
   if (listeningSocket6 <= 0) {
-    close(listeningSocket4);
-    return NO;
+    // ODataStore port: a host without IPv6 (a container's network often is one) is served over IPv4 alone
+    BOOL noIPv6 = [error6.domain isEqualToString:NSPOSIXErrorDomain] &&
+                  (error6.code == EAFNOSUPPORT || error6.code == EPROTONOSUPPORT || error6.code == EADDRNOTAVAIL);
+    if (!noIPv6) {
+      if (error) {
+        *error = error6;
+      }
+      close(listeningSocket4);
+      return NO;
+    }
+    GWS_LOG_WARNING(@"No IPv6 on this host: listening on IPv4 only");
+    listeningSocket6 = -1;
   }
 
   _serverName = [(NSString*)_GetOption(_options, GCDWebServerOption_ServerName, NSStringFromClass([self class])) copy];
@@ -558,28 +613,59 @@ static inline NSString* _EncodeBase64(NSString* string) {
   if ([authenticationMethod isEqualToString:GCDWebServerAuthenticationMethod_Basic]) {
     _authenticationRealm = [(NSString*)_GetOption(_options, GCDWebServerOption_AuthenticationRealm, _serverName) copy];
     _authenticationBasicAccounts = [[NSMutableDictionary alloc] init];
-    NSDictionary* accounts = _GetOption(_options, GCDWebServerOption_AuthenticationAccounts, @{});
+    NSDictionary<NSString*, NSString*>* accounts = _GetOption(_options, GCDWebServerOption_AuthenticationAccounts, @{});
     [accounts enumerateKeysAndObjectsUsingBlock:^(NSString* username, NSString* password, BOOL* stop) {
       [self->_authenticationBasicAccounts setObject:_EncodeBase64([NSString stringWithFormat:@"%@:%@", username, password]) forKey:username];
     }];
   } else if ([authenticationMethod isEqualToString:GCDWebServerAuthenticationMethod_DigestAccess]) {
+#if !__GCDWEBSERVER_ENABLE_DIGEST_AUTH__
+    // ODataStore port: digest authentication is compiled out; refuse to start rather than run unauthenticated
+    GWS_LOG_ERROR(@"Digest access authentication is not supported by this build of GCDWebServer");
+    if (error) {
+      *error = [NSError errorWithDomain:kGCDWebServerErrorDomain code:-1 userInfo:@{NSLocalizedDescriptionKey : @"Digest access authentication is not supported"}];
+    }
+    close(listeningSocket4);
+    if (listeningSocket6 > 0) {  // ODataStore port: there may be none
+      close(listeningSocket6);
+    }
+    _serverName = nil;
+    _authenticationRealm = nil;
+    _authenticationBasicAccounts = nil;
+    return NO;
+#else
     _authenticationRealm = [(NSString*)_GetOption(_options, GCDWebServerOption_AuthenticationRealm, _serverName) copy];
     _authenticationDigestAccounts = [[NSMutableDictionary alloc] init];
     NSDictionary* accounts = _GetOption(_options, GCDWebServerOption_AuthenticationAccounts, @{});
     [accounts enumerateKeysAndObjectsUsingBlock:^(NSString* username, NSString* password, BOOL* stop) {
       [self->_authenticationDigestAccounts setObject:GCDWebServerComputeMD5Digest(@"%@:%@:%@", username, self->_authenticationRealm, password) forKey:username];
     }];
+#endif
   }
   _connectionClass = _GetOption(_options, GCDWebServerOption_ConnectionClass, [GCDWebServerConnection class]);
   _shouldAutomaticallyMapHEADToGET = [(NSNumber*)_GetOption(_options, GCDWebServerOption_AutomaticallyMapHEADToGET, @YES) boolValue];
   _disconnectDelay = [(NSNumber*)_GetOption(_options, GCDWebServerOption_ConnectedStateCoalescingInterval, @1.0) doubleValue];
   _dispatchQueuePriority = [(NSNumber*)_GetOption(_options, GCDWebServerOption_DispatchQueuePriority, @(DISPATCH_QUEUE_PRIORITY_DEFAULT)) longValue];
+  _maxHeadSize = [(NSNumber*)_GetOption(_options, GCDWebServerOption_MaxHeadSize, @(kGCDWebServerHTTPMessageDefaultMaxHeadSize)) unsignedIntegerValue];
+  _maxBodySize = [(NSNumber*)_GetOption(_options, GCDWebServerOption_MaxBodySize, @(64 * 1024 * 1024)) unsignedIntegerValue];
+  _readTimeout = [(NSNumber*)_GetOption(_options, GCDWebServerOption_ReadTimeout, @60.0) doubleValue];
+  _keepAliveTimeout = [(NSNumber*)_GetOption(_options, GCDWebServerOption_KeepAliveTimeout, @0.0) doubleValue];  // ODataStore port
+  _maxRequestsPerConnection = [(NSNumber*)_GetOption(_options, GCDWebServerOption_MaxRequestsPerConnection, @100) unsignedIntegerValue];
+
+#if !defined(SO_NOSIGPIPE)
+  // ODataStore port: without SO_NOSIGPIPE a write to a socket the peer has closed raises SIGPIPE, which
+  // kills the process by default. Ignore it unless the application installed its own handler.
+  struct sigaction currentAction;
+  if ((sigaction(SIGPIPE, NULL, &currentAction) == 0) && (currentAction.sa_handler == SIG_DFL)) {
+    signal(SIGPIPE, SIG_IGN);
+  }
+#endif
 
   _source4 = [self _createDispatchSourceWithListeningSocket:listeningSocket4 isIPv6:NO];
-  _source6 = [self _createDispatchSourceWithListeningSocket:listeningSocket6 isIPv6:YES];
+  _source6 = listeningSocket6 > 0 ? [self _createDispatchSourceWithListeningSocket:listeningSocket6 isIPv6:YES] : NULL;  // ODataStore port
   _port = port;
   _bindToLocalhost = bindToLocalhost;
 
+#if __GCDWEBSERVER_ENABLE_BONJOUR_NAT__
   NSString* bonjourName = _GetOption(_options, GCDWebServerOption_BonjourName, nil);
   NSString* bonjourType = _GetOption(_options, GCDWebServerOption_BonjourType, @"_http._tcp");
   if (bonjourName) {
@@ -626,9 +712,12 @@ static inline NSString* _EncodeBase64(NSString* string) {
       GWS_LOG_ERROR(@"Failed creating NAT port mapping (%i)", status);
     }
   }
+#endif
 
   dispatch_resume(_source4);
-  dispatch_resume(_source6);
+  if (_source6) {  // ODataStore port: there may be none
+    dispatch_resume(_source6);
+  }
   GWS_LOG_INFO(@"%@ started on port %i and reachable at %@", [self class], (int)_port, self.serverURL);
   if ([_delegate respondsToSelector:@selector(webServerDidStart:)]) {
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -642,6 +731,7 @@ static inline NSString* _EncodeBase64(NSString* string) {
 - (void)_stop {
   GWS_DCHECK(_source4 != NULL);
 
+#if __GCDWEBSERVER_ENABLE_BONJOUR_NAT__
   if (_dnsService) {
     _dnsAddress = nil;
     _dnsPort = 0;
@@ -672,12 +762,17 @@ static inline NSString* _EncodeBase64(NSString* string) {
     CFRelease(_registrationService);
     _registrationService = NULL;
   }
+#endif
 
-  dispatch_source_cancel(_source6);
+  if (_source6) {  // ODataStore port: there may be none
+    dispatch_source_cancel(_source6);
+  }
   dispatch_source_cancel(_source4);
   dispatch_group_wait(_sourceGroup, DISPATCH_TIME_FOREVER);  // Wait until the cancellation handlers have been called which guarantees the listening sockets are closed
 #if !OS_OBJECT_USE_OBJC_RETAIN_RELEASE
-  dispatch_release(_source6);
+  if (_source6) {
+    dispatch_release(_source6);
+  }
 #endif
   _source6 = NULL;
 #if !OS_OBJECT_USE_OBJC_RETAIN_RELEASE
@@ -693,10 +788,7 @@ static inline NSString* _EncodeBase64(NSString* string) {
   _authenticationDigestAccounts = nil;
 
   dispatch_async(dispatch_get_main_queue(), ^{
-    if (self->_disconnectTimer) {
-      CFRunLoopTimerInvalidate(self->_disconnectTimer);
-      CFRelease(self->_disconnectTimer);
-      self->_disconnectTimer = NULL;
+    if ([self _cancelDisconnectTimer]) {
       [self _didDisconnect];
     }
   });
@@ -795,6 +887,9 @@ static inline NSString* _EncodeBase64(NSString* string) {
 }
 
 - (NSURL*)bonjourServerURL {
+#if !__GCDWEBSERVER_ENABLE_BONJOUR_NAT__
+  return nil;
+#else
   if (_source4 && _resolutionService) {
     NSString* name = (__bridge NSString*)CFNetServiceGetTargetHost(_resolutionService);
     if (name.length) {
@@ -807,9 +902,13 @@ static inline NSString* _EncodeBase64(NSString* string) {
     }
   }
   return nil;
+#endif
 }
 
 - (NSURL*)publicServerURL {
+#if !__GCDWEBSERVER_ENABLE_BONJOUR_NAT__
+  return nil;
+#else
   if (_source4 && _dnsService && _dnsAddress && _dnsPort) {
     if (_dnsPort != 80) {
       return [NSURL URLWithString:[NSString stringWithFormat:@"http://%@:%i/", _dnsAddress, (int)_dnsPort]];
@@ -818,6 +917,7 @@ static inline NSString* _EncodeBase64(NSString* string) {
     }
   }
   return nil;
+#endif
 }
 
 - (BOOL)start {
@@ -849,7 +949,14 @@ static inline NSString* _EncodeBase64(NSString* string) {
   if ((termHandler != SIG_ERR) && (intHandler != SIG_ERR)) {
     if ([self startWithOptions:options error:error]) {
       while (_run) {
+#if defined(__APPLE__)
         CFRunLoopRunInMode(kCFRunLoopDefaultMode, 1.0, true);
+#else
+        NSDate* limit = [NSDate dateWithTimeIntervalSinceNow:1.0];  // ODataStore port: NSRunLoop in place of CFRunLoop
+        if (![[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode beforeDate:limit]) {
+          [NSThread sleepUntilDate:limit];  // No input sources: -runMode:beforeDate: returns at once
+        }
+#endif
       }
       [self stop];
       success = YES;
@@ -868,6 +975,7 @@ static inline NSString* _EncodeBase64(NSString* string) {
 @implementation GCDWebServer (Handlers)
 
 - (void)addDefaultHandlerForMethod:(NSString*)method requestClass:(Class)aClass processBlock:(GCDWebServerProcessBlock)block {
+  block = [block copy];  // ODataStore port: heap-copy block parameters first, see PORTING.md (libobjc2 stack-block leak)
   [self addDefaultHandlerForMethod:method
                       requestClass:aClass
                  asyncProcessBlock:^(GCDWebServerRequest* request, GCDWebServerCompletionBlock completionBlock) {
@@ -876,6 +984,7 @@ static inline NSString* _EncodeBase64(NSString* string) {
 }
 
 - (void)addDefaultHandlerForMethod:(NSString*)method requestClass:(Class)aClass asyncProcessBlock:(GCDWebServerAsyncProcessBlock)block {
+  block = [block copy];  // ODataStore port: heap-copy block parameters first, see PORTING.md (libobjc2 stack-block leak)
   [self
       addHandlerWithMatchBlock:^GCDWebServerRequest*(NSString* requestMethod, NSURL* requestURL, NSDictionary<NSString*, NSString*>* requestHeaders, NSString* urlPath, NSDictionary<NSString*, NSString*>* urlQuery) {
         if (![requestMethod isEqualToString:method]) {
@@ -887,6 +996,7 @@ static inline NSString* _EncodeBase64(NSString* string) {
 }
 
 - (void)addHandlerForMethod:(NSString*)method path:(NSString*)path requestClass:(Class)aClass processBlock:(GCDWebServerProcessBlock)block {
+  block = [block copy];  // ODataStore port: heap-copy block parameters first, see PORTING.md (libobjc2 stack-block leak)
   [self addHandlerForMethod:method
                        path:path
                requestClass:aClass
@@ -896,6 +1006,7 @@ static inline NSString* _EncodeBase64(NSString* string) {
 }
 
 - (void)addHandlerForMethod:(NSString*)method path:(NSString*)path requestClass:(Class)aClass asyncProcessBlock:(GCDWebServerAsyncProcessBlock)block {
+  block = [block copy];  // ODataStore port: heap-copy block parameters first, see PORTING.md (libobjc2 stack-block leak)
   if ([path hasPrefix:@"/"] && [aClass isSubclassOfClass:[GCDWebServerRequest class]]) {
     [self
         addHandlerWithMatchBlock:^GCDWebServerRequest*(NSString* requestMethod, NSURL* requestURL, NSDictionary<NSString*, NSString*>* requestHeaders, NSString* urlPath, NSDictionary<NSString*, NSString*>* urlQuery) {
@@ -914,6 +1025,7 @@ static inline NSString* _EncodeBase64(NSString* string) {
 }
 
 - (void)addHandlerForMethod:(NSString*)method pathRegex:(NSString*)regex requestClass:(Class)aClass processBlock:(GCDWebServerProcessBlock)block {
+  block = [block copy];  // ODataStore port: heap-copy block parameters first, see PORTING.md (libobjc2 stack-block leak)
   [self addHandlerForMethod:method
                   pathRegex:regex
                requestClass:aClass
@@ -923,6 +1035,7 @@ static inline NSString* _EncodeBase64(NSString* string) {
 }
 
 - (void)addHandlerForMethod:(NSString*)method pathRegex:(NSString*)regex requestClass:(Class)aClass asyncProcessBlock:(GCDWebServerAsyncProcessBlock)block {
+  block = [block copy];  // ODataStore port: heap-copy block parameters first, see PORTING.md (libobjc2 stack-block leak)
   NSRegularExpression* expression = [NSRegularExpression regularExpressionWithPattern:regex options:NSRegularExpressionCaseInsensitive error:NULL];
   if (expression && [aClass isSubclassOfClass:[GCDWebServerRequest class]]) {
     [self

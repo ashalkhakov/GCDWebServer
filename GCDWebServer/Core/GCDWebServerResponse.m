@@ -215,6 +215,7 @@
 }
 
 - (void)performReadDataWithCompletion:(GCDWebServerBodyReaderCompletionBlock)block {
+  block = [block copy];  // ODataStore port: heap-copy block parameters first, see PORTING.md (libobjc2 stack-block leak)
   GWS_DCHECK(_opened);
   if ([_reader respondsToSelector:@selector(asyncReadDataWithCompletion:)]) {
     [_reader asyncReadDataWithCompletion:[block copy]];

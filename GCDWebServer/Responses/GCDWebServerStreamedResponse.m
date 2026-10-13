@@ -38,14 +38,17 @@
 @dynamic contentType;
 
 + (instancetype)responseWithContentType:(NSString*)type streamBlock:(GCDWebServerStreamBlock)block {
+  block = [block copy];  // ODataStore port: heap-copy block parameters first, see PORTING.md (libobjc2 stack-block leak)
   return [(GCDWebServerStreamedResponse*)[[self class] alloc] initWithContentType:type streamBlock:block];
 }
 
 + (instancetype)responseWithContentType:(NSString*)type asyncStreamBlock:(GCDWebServerAsyncStreamBlock)block {
+  block = [block copy];  // ODataStore port: heap-copy block parameters first, see PORTING.md (libobjc2 stack-block leak)
   return [(GCDWebServerStreamedResponse*)[[self class] alloc] initWithContentType:type asyncStreamBlock:block];
 }
 
 - (instancetype)initWithContentType:(NSString*)type streamBlock:(GCDWebServerStreamBlock)block {
+  block = [block copy];  // ODataStore port: heap-copy block parameters first, see PORTING.md (libobjc2 stack-block leak)
   return [self initWithContentType:type
                   asyncStreamBlock:^(GCDWebServerBodyReaderCompletionBlock completionBlock) {
                     NSError* error = nil;
@@ -55,6 +58,7 @@
 }
 
 - (instancetype)initWithContentType:(NSString*)type asyncStreamBlock:(GCDWebServerAsyncStreamBlock)block {
+  block = [block copy];  // ODataStore port: heap-copy block parameters first, see PORTING.md (libobjc2 stack-block leak)
   if ((self = [super init])) {
     _block = [block copy];
 

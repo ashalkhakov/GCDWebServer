@@ -48,6 +48,24 @@
 #import "GCDWebServerFileResponse.h"
 #import "GCDWebServerStreamedResponse.h"
 
+#import "GCDWebServerHTTPMessage.h"
+
+/**
+ *  ODataStore port: features of upstream GCDWebServer that are compiled out
+ *  (see PORTING.md). The code is left in place under these guards only to
+ *  keep the diff against upstream small; it is not maintained and does not
+ *  build on non-Apple platforms. Do not enable.
+ */
+
+#define __GCDWEBSERVER_ENABLE_BONJOUR_NAT__ 0
+#define __GCDWEBSERVER_ENABLE_DIGEST_AUTH__ 0
+
+/**
+ *  ODataStore port: CFSocketNativeHandle is a CoreFoundation type.
+ */
+
+typedef int GCDWebServerSocketHandle;
+
 /**
  *  Check if a custom logging facility should be used instead.
  */
@@ -177,11 +195,15 @@ extern NSString* _Nullable GCDWebServerExtractHeaderValueParameter(NSString* _Nu
 extern NSStringEncoding GCDWebServerStringEncodingFromCharset(NSString* charset);
 extern BOOL GCDWebServerIsTextContentType(NSString* type);
 extern NSString* GCDWebServerDescribeData(NSData* data, NSString* contentType);
+#if __GCDWEBSERVER_ENABLE_DIGEST_AUTH__
 extern NSString* GCDWebServerComputeMD5Digest(NSString* format, ...) NS_FORMAT_FUNCTION(1, 2);
+#endif
 extern NSString* GCDWebServerStringFromSockAddr(const struct sockaddr* addr, BOOL includeService);
+extern NSString* _Nullable GCDWebServerCopyURLPath(NSURL* url);  // ODataStore port: CFURLCopyPath()
+extern NSString* _Nullable GCDWebServerCopyURLQueryString(NSURL* url);  // ODataStore port: CFURLCopyQueryString(url, NULL)
 
 @interface GCDWebServerConnection ()
-- (instancetype)initWithServer:(GCDWebServer*)server localAddress:(NSData*)localAddress remoteAddress:(NSData*)remoteAddress socket:(CFSocketNativeHandle)socket;
+- (instancetype)initWithServer:(GCDWebServer*)server localAddress:(NSData*)localAddress remoteAddress:(NSData*)remoteAddress socket:(GCDWebServerSocketHandle)socket;
 @end
 
 @interface GCDWebServer ()
@@ -192,6 +214,11 @@ extern NSString* GCDWebServerStringFromSockAddr(const struct sockaddr* addr, BOO
 @property(nonatomic, readonly, nullable) NSMutableDictionary<NSString*, NSString*>* authenticationDigestAccounts;
 @property(nonatomic, readonly) BOOL shouldAutomaticallyMapHEADToGET;
 @property(nonatomic, readonly) dispatch_queue_priority_t dispatchQueuePriority;
+@property(nonatomic, readonly) NSUInteger maxHeadSize;  // ODataStore port
+@property(nonatomic, readonly) NSUInteger maxBodySize;  // ODataStore port
+@property(nonatomic, readonly) NSTimeInterval readTimeout;  // ODataStore port
+@property(nonatomic, readonly) NSTimeInterval keepAliveTimeout;  // ODataStore port
+@property(nonatomic, readonly) NSUInteger maxRequestsPerConnection;  // ODataStore port
 - (void)willStartConnection:(GCDWebServerConnection*)connection;
 - (void)didEndConnection:(GCDWebServerConnection*)connection;
 @end
