@@ -11,7 +11,8 @@ are built. GCDWebDAVServer, GCDWebUploader, the apps, upstream's tests and its
 Xcode project are left as upstream has them, unbuilt.
 
 The port builds with ARC on macOS (Apple Foundation) and on GNUstep on Linux
-(clang, libobjc2 with the gnustep-2.0 runtime, gnustep-base, libdispatch).
+and Windows (clang, libobjc2 with the gnustep-2.0 runtime, gnustep-base,
+libdispatch; on Windows in MSYS2's CLANG64).
 
 ## Files
 
@@ -19,25 +20,29 @@ The port builds with ARC on macOS (Apple Foundation) and on GNUstep on Linux
   changes below.
 - `GCDWebServer/Core/GCDWebServerHTTPMessage.{h,m}`: new, replaces
   CFHTTPMessage (private).
-- `upstream.diff`: `diff -ruN` of the three directories, upstream against
-  ported.
+- `GCDWebServer/Core/GCDWebServerPlatform.h` and
+  `GCDWebServer/Platform/{POSIX,Windows}/`: new, what differs between POSIX
+  and Windows (sockets, files) behind one set of names. The build's include
+  path and source list choose the platform's `GCDWebServerPlatformTypes.h` and
+  `GCDWebServerPlatform.m` (`GNUmakefile` by target OS, `Makefile.apple`
+  POSIX), so the shared sources carry no `#if` for it.
 - `GNUmakefile` (GNUstep) and `Makefile.apple` (macOS, iOS): the library,
   built, tested and installed the way gnustep-release-actions runs every
   repository: `make`, `make check`, `make install DESTDIR=...`. On GNUstep it
   installs `libGCDWebServer` and its headers in `GCDWebServer/`; on Apple,
   `GCDWebServer.xcframework` (a static library for macOS, iOS and the
   simulator, the headers in `GCDWebServer/`).
-- `Tests/GNUstep/gws-smoke.m`: smoke test over plain BSD sockets
-  (`make check`).
+- `Tests/GNUstep/gws-smoke.m`: smoke test over plain sockets, through
+  `GCDWebServerPlatform.h` (`make check`).
 - `Tests/GNUstep/gws-cfcompare.m`: macOS only; compares the CFHTTPMessage
   replacement with CFNetwork (`make -f Makefile.apple check` runs it too).
 
-## Updating to a new upstream release
+## What the port changed
 
-1. Copy the new release's `GCDWebServer/Core`, `Requests` and `Responses` over these.
-2. `patch -p1 < upstream.diff` from `GCDWebServer/`, and fix the rejects.
-3. Regenerate `upstream.diff` against the new pristine release, and run
-   `make check` on GNUstep and `make -f Makefile.apple check` on macOS.
+Upstream is archived, so there are no releases to take. This branch starts
+from upstream's `3.5.4` (`1c36bf07`), so its history is the port:
+
+    git diff 1c36bf07 -- GCDWebServer/Core GCDWebServer/Requests GCDWebServer/Responses
 
 Changes are marked `ODataStore port` in comments, or sit in the guards named below.
 
@@ -81,21 +86,34 @@ Platform:
 - `TargetConditionals.h` only on Apple; elsewhere `TARGET_OS_IPHONE`,
   `TARGET_IPHONE_SIMULATOR` and `TARGET_OS_TV` are defined to 0.
 - `CFUUID` → `NSUUID` (only in the compiled-out digest nonce).
-- `CFSocketNativeHandle` → `GCDWebServerSocketHandle` (`int`).
+- `CFSocketNativeHandle` → `GCDWebServerSocketHandle` (`int`; a `SOCKET` on
+  Windows), valid when `GCDWebServerSocketIsValid()` says so, closed with
+  `GCDWebServerSocketClose()`; socket errors from
+  `GCDWebServerSocketLastError()`, errno values on both platforms (Winsock's
+  are translated), so `NSPOSIXErrorDomain` errors and the no-IPv6 fallback
+  mean the same.
 - `sin_len`, `sin6_len`, `sa_len` only on Apple; elsewhere the length comes
   from the address family.
 - `st_mtimespec` → `st_mtim` off Apple (File response Last-Modified and ETag).
 - `SO_NOSIGPIPE` where it exists. Elsewhere `-startWithOptions:error:`
   sets SIGPIPE to SIG_IGN if it is still SIG_DFL: libdispatch does the writes,
   so `MSG_NOSIGNAL` is not an option. A handler the application installed is
-  left alone.
+  left alone. Windows has no SIGPIPE.
+- Windows: Winsock is started once before the first socket; files (request
+  and response bodies) are opened in binary mode with UTF-16 paths, since a
+  text-mode file has its line ends rewritten; a file response's size,
+  Last-Modified and ETag come from the file's attributes (no inode: size and
+  modification time), and a reparse point (symbolic link, junction) is not
+  served, as `lstat()` and `O_NOFOLLOW` refuse a link elsewhere. libdispatch
+  reads and writes the sockets itself (`recv`/`send` on Windows).
 - MIME types: UTType on Apple (deprecation warning silenced); elsewhere a small
   table (json, xml, txt, html, css, js, csv, png, jpg, gif, svg, ico, pdf, zip),
   `application/octet-stream` otherwise.
 - Charset names: CFStringConvertIANACharSetNameToEncoding on Apple; elsewhere a
   table of the common IANA names, UTF-8 otherwise.
 - Primary IP address (`serverURL` when not bound to localhost): SystemConfiguration
-  on Apple; elsewhere the first interface that is up and not loopback.
+  on Apple; elsewhere the first interface that is up and not loopback
+  (`GetAdaptersAddresses()` on Windows).
 - The disconnect-coalescing timer is a dispatch source on the main queue
   instead of a CFRunLoopTimer (all platforms).
 - `-runWithOptions:` and its helper use NSRunLoop instead of CFRunLoop off Apple.
@@ -131,8 +149,14 @@ Added:
   Content-Length gets 413 before the body is read (also before
   `100 Continue`); a chunked body gets 413 as soon as a chunk size goes over.
 - `GCDWebServerOption_ReadTimeout` (default 60 s, 0 disables): the time from
-  accept to the end of the request body. When it runs out the read side is
-  shut down and the server answers 408.
+  accept to the end of the request body. When it runs out the pending read
+  is cancelled and the server answers 408. A connection reads and writes
+  through dispatch I/O channels of its own, one each, rather than with
+  `dispatch_read()` and `dispatch_write()`: closing the read channel is what
+  cancels a read on every platform (shutting the socket's read side down
+  wakes a pending read on POSIX, not on Windows). A read waits on its channel
+  for the first byte and takes the rest of what has arrived straight from the
+  socket, as `dispatch_read()` did.
 - Chunked bodies: the chunk-size line is limited to 4 KiB and the trailer
   section to the head size limit.
 - `GCDWebServerOption_KeepAliveTimeout` (default 0: off, as upstream) and
@@ -158,7 +182,9 @@ Fixed along the way:
 - A request path that does not unescape (`/%FF`) got 500 and, in `DEBUG`
   builds, `abort()`. Now it gets 400.
 - The socket is closed as soon as the last byte of the response is written
-  (`-_finish`), rather than when the connection object is deallocated.
+  (`-_finish`) and libdispatch has let go of it (both channels' cleanup
+  handlers, `GCDWebServerSocketCloser`), rather than when the connection
+  object is deallocated.
   `-close` and the delegate's disconnect bookkeeping run at the same point.
 - Listening on every address (not bound to localhost) failed on Linux: the
   IPv6 wildcard socket also takes IPv4 there unless `IPV6_V6ONLY` is set,

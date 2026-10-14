@@ -26,7 +26,8 @@
  */
 
 #import <os/object.h>
-#import <sys/socket.h>
+
+#import "GCDWebServerPlatform.h"  // ODataStore port: sockets and files, POSIX's or Windows'
 
 /**
  *  All GCDWebServer headers.
@@ -61,10 +62,9 @@
 #define __GCDWEBSERVER_ENABLE_DIGEST_AUTH__ 0
 
 /**
- *  ODataStore port: CFSocketNativeHandle is a CoreFoundation type.
+ *  ODataStore port: CFSocketNativeHandle is a CoreFoundation type;
+ *  GCDWebServerSocketHandle comes from GCDWebServerPlatform.h (a SOCKET on Windows).
  */
-
-typedef int GCDWebServerSocketHandle;
 
 /**
  *  Check if a custom logging facility should be used instead.

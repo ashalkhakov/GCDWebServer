@@ -29,8 +29,6 @@
 #error GCDWebServer requires ARC
 #endif
 
-#import <sys/stat.h>
-
 #import "GCDWebServerPrivate.h"
 
 #define kFileReadBufferSize (32 * 1024)
@@ -72,23 +70,23 @@
   return [self initWithFile:path byteRange:range isAttachment:NO mimeTypeOverrides:nil];
 }
 
-static inline NSDate* _NSDateFromTimeSpec(const struct timespec* t) {
-  return [NSDate dateWithTimeIntervalSince1970:((NSTimeInterval)t->tv_sec + (NSTimeInterval)t->tv_nsec / 1000000000.0)];
-}
 
 - (instancetype)initWithFile:(NSString*)path byteRange:(NSRange)range isAttachment:(BOOL)attachment mimeTypeOverrides:(NSDictionary<NSString*, NSString*>*)overrides {
-  struct stat info;
-  if (lstat([path fileSystemRepresentation], &info) || !(info.st_mode & S_IFREG)) {
+  // ODataStore port: GCDWebServerPlatform.h (lstat() and st_mtim on POSIX, the file's attributes on Windows)
+  unsigned long long infoSize = 0;
+  NSDate* lastModified = nil;
+  NSString* eTag = nil;
+  if (!GCDWebServerRegularFileInfo(path, &infoSize, &lastModified, &eTag)) {
     GWS_DNOT_REACHED();
     return nil;
   }
 #ifndef __LP64__
-  if (info.st_size >= (off_t)4294967295) {  // In 32 bit mode, we can't handle files greater than 4 GiBs (don't use "NSUIntegerMax" here to avoid potential unsigned to signed conversion issues)
+  if (infoSize >= 4294967295ULL) {  // In 32 bit mode, we can't handle files greater than 4 GiBs (don't use "NSUIntegerMax" here to avoid potential unsigned to signed conversion issues)
     GWS_DNOT_REACHED();
     return nil;
   }
 #endif
-  NSUInteger fileSize = (NSUInteger)info.st_size;
+  NSUInteger fileSize = (NSUInteger)infoSize;
 
   BOOL hasByteRange = GCDWebServerIsValidByteRange(range);
   if (hasByteRange) {
@@ -131,19 +129,14 @@ static inline NSDate* _NSDateFromTimeSpec(const struct timespec* t) {
 
     self.contentType = GCDWebServerGetMimeTypeForExtension([_path pathExtension], overrides);
     self.contentLength = _size;
-#if defined(__APPLE__)
-    self.lastModifiedDate = _NSDateFromTimeSpec(&info.st_mtimespec);
-    self.eTag = [NSString stringWithFormat:@"%llu/%li/%li", info.st_ino, info.st_mtimespec.tv_sec, info.st_mtimespec.tv_nsec];
-#else
-    self.lastModifiedDate = _NSDateFromTimeSpec(&info.st_mtim);  // ODataStore port: POSIX name
-    self.eTag = [NSString stringWithFormat:@"%llu/%li/%li", (unsigned long long)info.st_ino, (long)info.st_mtim.tv_sec, (long)info.st_mtim.tv_nsec];
-#endif
+    self.lastModifiedDate = lastModified;
+    self.eTag = eTag;
   }
   return self;
 }
 
 - (BOOL)open:(NSError**)error {
-  _file = open([_path fileSystemRepresentation], O_NOFOLLOW | O_RDONLY);
+  _file = GCDWebServerOpenFile(_path, kGCDWebServerOpenNoFollow | O_RDONLY);  // ODataStore port: binary on Windows
   if (_file <= 0) {
     if (error) {
       *error = GCDWebServerMakePosixError(errno);

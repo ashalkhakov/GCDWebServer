@@ -29,11 +29,24 @@ GCDWebServer_PUBLIC_HEADERS = \
 	GCDWebServer/Responses/GCDWebServerFileResponse.h \
 	GCDWebServer/Responses/GCDWebServerStreamedResponse.h
 
-libGCDWebServer_OBJC_FILES = $(wildcard GCDWebServer/Core/*.m GCDWebServer/Requests/*.m GCDWebServer/Responses/*.m)
-libGCDWebServer_INCLUDE_DIRS = -IGCDWebServer/Core -IGCDWebServer/Requests -IGCDWebServer/Responses
+# What differs between POSIX and Windows (sockets, files) is in
+# GCDWebServer/Platform/<platform>: GCDWebServerPlatform.m and the headers it
+# brings, behind GCDWebServer/Core/GCDWebServerPlatform.h.
+ifeq ($(findstring mingw, $(GNUSTEP_TARGET_OS)), mingw)
+  GCDWebServer_PLATFORM = Windows
+  GCDWebServer_PLATFORM_LIBS = -lws2_32 -liphlpapi
+else
+  GCDWebServer_PLATFORM = POSIX
+  GCDWebServer_PLATFORM_LIBS =
+endif
+
+libGCDWebServer_OBJC_FILES = $(wildcard GCDWebServer/Core/*.m GCDWebServer/Requests/*.m GCDWebServer/Responses/*.m) \
+	GCDWebServer/Platform/$(GCDWebServer_PLATFORM)/GCDWebServerPlatform.m
+libGCDWebServer_INCLUDE_DIRS = -IGCDWebServer/Core -IGCDWebServer/Requests -IGCDWebServer/Responses \
+	-IGCDWebServer/Platform/$(GCDWebServer_PLATFORM)
 libGCDWebServer_OBJCFLAGS = -fobjc-arc -fblocks -fobjc-runtime=gnustep-2.0 \
 	-fconstant-string-class=NSConstantString -fobjc-exceptions -Wall
-libGCDWebServer_LIBRARIES_DEPEND_UPON = -lgnustep-base -lobjc -ldispatch -lz
+libGCDWebServer_LIBRARIES_DEPEND_UPON = -lgnustep-base -lobjc -ldispatch -lz $(GCDWebServer_PLATFORM_LIBS)
 
 include $(GNUSTEP_MAKEFILES)/library.make
 
@@ -49,5 +62,6 @@ after-uninstall::
 	rm -rf $(GNUSTEP_HEADERS)/GCDWebServer
 
 check::
-	$(MAKE) -C Tests/GNUstep
-	LD_LIBRARY_PATH="$(CURDIR)/obj$${LD_LIBRARY_PATH:+:$$LD_LIBRARY_PATH}" ./Tests/GNUstep/obj/gws-smoke
+	$(MAKE) -C Tests/GNUstep GCDWebServer_PLATFORM=$(GCDWebServer_PLATFORM) GCDWebServer_PLATFORM_LIBS="$(GCDWebServer_PLATFORM_LIBS)"
+	LD_LIBRARY_PATH="$(CURDIR)/obj$${LD_LIBRARY_PATH:+:$$LD_LIBRARY_PATH}" \
+	PATH="$(CURDIR)/obj:$$PATH" ./Tests/GNUstep/obj/gws-smoke

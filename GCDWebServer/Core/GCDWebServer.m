@@ -39,7 +39,6 @@
 #import <AppKit/AppKit.h>
 #endif
 #endif
-#import <netinet/in.h>
 #if defined(__APPLE__)
 #import <dns_sd.h>
 #endif
@@ -464,59 +463,65 @@ static inline NSString* _EncodeBase64(NSString* string) {
 #endif
 }
 
-- (int)_createListeningSocket:(BOOL)useIPv6
-                 localAddress:(const void*)address
-                       length:(socklen_t)length
-        maxPendingConnections:(NSUInteger)maxPendingConnections
-                        error:(NSError**)error {
-  int listeningSocket = socket(useIPv6 ? PF_INET6 : PF_INET, SOCK_STREAM, IPPROTO_TCP);
-  if (listeningSocket > 0) {
+// ODataStore port: sockets through GCDWebServerPlatform.h (a SOCKET on Windows, its errors as errno values).
+- (GCDWebServerSocketHandle)_createListeningSocket:(BOOL)useIPv6
+                                      localAddress:(const void*)address
+                                            length:(socklen_t)length
+                             maxPendingConnections:(NSUInteger)maxPendingConnections
+                                             error:(NSError**)error {
+  GCDWebServerSocketsStart();
+  GCDWebServerSocketHandle listeningSocket = socket(useIPv6 ? PF_INET6 : PF_INET, SOCK_STREAM, IPPROTO_TCP);
+  if (GCDWebServerSocketIsValid(listeningSocket)) {
     int yes = 1;
-    setsockopt(listeningSocket, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
+    setsockopt(listeningSocket, SOL_SOCKET, SO_REUSEADDR, (const void*)&yes, sizeof(yes));
     if (useIPv6) {
       // ODataStore port: IPv6 only, beside the IPv4 socket; on Linux an IPv6 wildcard socket otherwise takes IPv4 too,
       // and binding both to the same port fails with EADDRINUSE
-      setsockopt(listeningSocket, IPPROTO_IPV6, IPV6_V6ONLY, &yes, sizeof(yes));
+      setsockopt(listeningSocket, IPPROTO_IPV6, IPV6_V6ONLY, (const void*)&yes, sizeof(yes));
     }
 
     if (bind(listeningSocket, address, length) == 0) {
       if (listen(listeningSocket, (int)maxPendingConnections) == 0) {
-        GWS_LOG_DEBUG(@"Did open %s listening socket %i", useIPv6 ? "IPv6" : "IPv4", listeningSocket);
+        GWS_LOG_DEBUG(@"Did open %s listening socket %i", useIPv6 ? "IPv6" : "IPv4", (int)listeningSocket);
         return listeningSocket;
       } else {
+        int code = GCDWebServerSocketLastError();
         if (error) {
-          *error = GCDWebServerMakePosixError(errno);
+          *error = GCDWebServerMakePosixError(code);
         }
-        GWS_LOG_ERROR(@"Failed starting %s listening socket: %s (%i)", useIPv6 ? "IPv6" : "IPv4", strerror(errno), errno);
-        close(listeningSocket);
+        GWS_LOG_ERROR(@"Failed starting %s listening socket: %@ (%i)", useIPv6 ? "IPv6" : "IPv4", GCDWebServerSocketErrorString(code), code);
+        GCDWebServerSocketClose(listeningSocket);
       }
     } else {
+      int code = GCDWebServerSocketLastError();
       if (error) {
-        *error = GCDWebServerMakePosixError(errno);
+        *error = GCDWebServerMakePosixError(code);
       }
-      GWS_LOG_ERROR(@"Failed binding %s listening socket: %s (%i)", useIPv6 ? "IPv6" : "IPv4", strerror(errno), errno);
-      close(listeningSocket);
+      GWS_LOG_ERROR(@"Failed binding %s listening socket: %@ (%i)", useIPv6 ? "IPv6" : "IPv4", GCDWebServerSocketErrorString(code), code);
+      GCDWebServerSocketClose(listeningSocket);
     }
 
   } else {
+    int code = GCDWebServerSocketLastError();
     if (error) {
-      *error = GCDWebServerMakePosixError(errno);
+      *error = GCDWebServerMakePosixError(code);
     }
-    GWS_LOG_ERROR(@"Failed creating %s listening socket: %s (%i)", useIPv6 ? "IPv6" : "IPv4", strerror(errno), errno);
+    GWS_LOG_ERROR(@"Failed creating %s listening socket: %@ (%i)", useIPv6 ? "IPv6" : "IPv4", GCDWebServerSocketErrorString(code), code);
   }
-  return -1;
+  return kGCDWebServerInvalidSocket;
 }
 
-- (dispatch_source_t)_createDispatchSourceWithListeningSocket:(int)listeningSocket isIPv6:(BOOL)isIPv6 {
+- (dispatch_source_t)_createDispatchSourceWithListeningSocket:(GCDWebServerSocketHandle)listeningSocket isIPv6:(BOOL)isIPv6 {
   dispatch_group_enter(_sourceGroup);
-  dispatch_source_t source = dispatch_source_create(DISPATCH_SOURCE_TYPE_READ, listeningSocket, 0, dispatch_get_global_queue(_dispatchQueuePriority, 0));
+  dispatch_source_t source = dispatch_source_create(DISPATCH_SOURCE_TYPE_READ, (uintptr_t)listeningSocket, 0, dispatch_get_global_queue(_dispatchQueuePriority, 0));
   dispatch_source_set_cancel_handler(source, ^{
     @autoreleasepool {
-      int result = close(listeningSocket);
+      int result = GCDWebServerSocketClose(listeningSocket);
       if (result != 0) {
-        GWS_LOG_ERROR(@"Failed closing %s listening socket: %s (%i)", isIPv6 ? "IPv6" : "IPv4", strerror(errno), errno);
+        int code = GCDWebServerSocketLastError();
+        GWS_LOG_ERROR(@"Failed closing %s listening socket: %@ (%i)", isIPv6 ? "IPv6" : "IPv4", GCDWebServerSocketErrorString(code), code);
       } else {
-        GWS_LOG_DEBUG(@"Did close %s listening socket %i", isIPv6 ? "IPv6" : "IPv4", listeningSocket);
+        GWS_LOG_DEBUG(@"Did close %s listening socket %i", isIPv6 ? "IPv6" : "IPv4", (int)listeningSocket);
       }
     }
     dispatch_group_leave(self->_sourceGroup);
@@ -525,8 +530,8 @@ static inline NSString* _EncodeBase64(NSString* string) {
     @autoreleasepool {
       struct sockaddr_storage remoteSockAddr;
       socklen_t remoteAddrLen = sizeof(remoteSockAddr);
-      int socket = accept(listeningSocket, (struct sockaddr*)&remoteSockAddr, &remoteAddrLen);
-      if (socket > 0) {
+      GCDWebServerSocketHandle socket = accept(listeningSocket, (struct sockaddr*)&remoteSockAddr, &remoteAddrLen);
+      if (GCDWebServerSocketIsValid(socket)) {
         NSData* remoteAddress = [NSData dataWithBytes:&remoteSockAddr length:remoteAddrLen];
 
         struct sockaddr_storage localSockAddr;
@@ -539,15 +544,13 @@ static inline NSString* _EncodeBase64(NSString* string) {
           GWS_DNOT_REACHED();
         }
 
-#ifdef SO_NOSIGPIPE
-        int noSigPipe = 1;
-        setsockopt(socket, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, sizeof(noSigPipe));  // Make sure this socket cannot generate SIG_PIPE
-#endif  // ODataStore port: elsewhere SIGPIPE is ignored process-wide in -_start: (libdispatch does the writes, so MSG_NOSIGNAL is not an option)
+        GCDWebServerSocketNoBrokenPipeSignal(socket);  // Make sure this socket cannot generate SIG_PIPE; ODataStore port: see GCDWebServerIgnoreBrokenPipe()
 
         GCDWebServerConnection* connection = [(GCDWebServerConnection*)[self->_connectionClass alloc] initWithServer:self localAddress:localAddress remoteAddress:remoteAddress socket:socket];  // Connection will automatically retain itself while opened
         [connection self];  // Prevent compiler from complaining about unused variable / useless statement
       } else {
-        GWS_LOG_ERROR(@"Failed accepting %s socket: %s (%i)", isIPv6 ? "IPv6" : "IPv4", strerror(errno), errno);
+        int code = GCDWebServerSocketLastError();
+        GWS_LOG_ERROR(@"Failed accepting %s socket: %@ (%i)", isIPv6 ? "IPv6" : "IPv4", GCDWebServerSocketErrorString(code), code);
       }
     }
   });
@@ -562,15 +565,15 @@ static inline NSString* _EncodeBase64(NSString* string) {
   NSUInteger maxPendingConnections = [(NSNumber*)_GetOption(_options, GCDWebServerOption_MaxPendingConnections, @16) unsignedIntegerValue];
 
   struct sockaddr_in addr4;
-  bzero(&addr4, sizeof(addr4));
+  memset(&addr4, 0, sizeof(addr4));
 #if defined(__APPLE__)
   addr4.sin_len = sizeof(addr4);
 #endif
   addr4.sin_family = AF_INET;
   addr4.sin_port = htons(port);
   addr4.sin_addr.s_addr = bindToLocalhost ? htonl(INADDR_LOOPBACK) : htonl(INADDR_ANY);
-  int listeningSocket4 = [self _createListeningSocket:NO localAddress:&addr4 length:sizeof(addr4) maxPendingConnections:maxPendingConnections error:error];
-  if (listeningSocket4 <= 0) {
+  GCDWebServerSocketHandle listeningSocket4 = [self _createListeningSocket:NO localAddress:&addr4 length:sizeof(addr4) maxPendingConnections:maxPendingConnections error:error];
+  if (!GCDWebServerSocketIsValid(listeningSocket4)) {
     return NO;
   }
   if (port == 0) {
@@ -579,12 +582,13 @@ static inline NSString* _EncodeBase64(NSString* string) {
     if (getsockname(listeningSocket4, (struct sockaddr*)&addr, &addrlen) == 0) {
       port = ntohs(addr.sin_port);
     } else {
-      GWS_LOG_ERROR(@"Failed retrieving socket address: %s (%i)", strerror(errno), errno);
+      int code = GCDWebServerSocketLastError();
+      GWS_LOG_ERROR(@"Failed retrieving socket address: %@ (%i)", GCDWebServerSocketErrorString(code), code);
     }
   }
 
   struct sockaddr_in6 addr6;
-  bzero(&addr6, sizeof(addr6));
+  memset(&addr6, 0, sizeof(addr6));
 #if defined(__APPLE__)
   addr6.sin6_len = sizeof(addr6);
 #endif
@@ -592,8 +596,8 @@ static inline NSString* _EncodeBase64(NSString* string) {
   addr6.sin6_port = htons(port);
   addr6.sin6_addr = bindToLocalhost ? in6addr_loopback : in6addr_any;
   NSError* error6 = nil;
-  int listeningSocket6 = [self _createListeningSocket:YES localAddress:&addr6 length:sizeof(addr6) maxPendingConnections:maxPendingConnections error:&error6];
-  if (listeningSocket6 <= 0) {
+  GCDWebServerSocketHandle listeningSocket6 = [self _createListeningSocket:YES localAddress:&addr6 length:sizeof(addr6) maxPendingConnections:maxPendingConnections error:&error6];
+  if (!GCDWebServerSocketIsValid(listeningSocket6)) {
     // ODataStore port: a host without IPv6 (a container's network often is one) is served over IPv4 alone
     BOOL noIPv6 = [error6.domain isEqualToString:NSPOSIXErrorDomain] &&
                   (error6.code == EAFNOSUPPORT || error6.code == EPROTONOSUPPORT || error6.code == EADDRNOTAVAIL);
@@ -601,11 +605,11 @@ static inline NSString* _EncodeBase64(NSString* string) {
       if (error) {
         *error = error6;
       }
-      close(listeningSocket4);
+      GCDWebServerSocketClose(listeningSocket4);
       return NO;
     }
     GWS_LOG_WARNING(@"No IPv6 on this host: listening on IPv4 only");
-    listeningSocket6 = -1;
+    listeningSocket6 = kGCDWebServerInvalidSocket;
   }
 
   _serverName = [(NSString*)_GetOption(_options, GCDWebServerOption_ServerName, NSStringFromClass([self class])) copy];
@@ -624,9 +628,9 @@ static inline NSString* _EncodeBase64(NSString* string) {
     if (error) {
       *error = [NSError errorWithDomain:kGCDWebServerErrorDomain code:-1 userInfo:@{NSLocalizedDescriptionKey : @"Digest access authentication is not supported"}];
     }
-    close(listeningSocket4);
-    if (listeningSocket6 > 0) {  // ODataStore port: there may be none
-      close(listeningSocket6);
+    GCDWebServerSocketClose(listeningSocket4);
+    if (GCDWebServerSocketIsValid(listeningSocket6)) {  // ODataStore port: there may be none
+      GCDWebServerSocketClose(listeningSocket6);
     }
     _serverName = nil;
     _authenticationRealm = nil;
@@ -651,17 +655,10 @@ static inline NSString* _EncodeBase64(NSString* string) {
   _keepAliveTimeout = [(NSNumber*)_GetOption(_options, GCDWebServerOption_KeepAliveTimeout, @0.0) doubleValue];  // ODataStore port
   _maxRequestsPerConnection = [(NSNumber*)_GetOption(_options, GCDWebServerOption_MaxRequestsPerConnection, @100) unsignedIntegerValue];
 
-#if !defined(SO_NOSIGPIPE)
-  // ODataStore port: without SO_NOSIGPIPE a write to a socket the peer has closed raises SIGPIPE, which
-  // kills the process by default. Ignore it unless the application installed its own handler.
-  struct sigaction currentAction;
-  if ((sigaction(SIGPIPE, NULL, &currentAction) == 0) && (currentAction.sa_handler == SIG_DFL)) {
-    signal(SIGPIPE, SIG_IGN);
-  }
-#endif
+  GCDWebServerIgnoreBrokenPipe();  // ODataStore port: where there is no SO_NOSIGPIPE
 
   _source4 = [self _createDispatchSourceWithListeningSocket:listeningSocket4 isIPv6:NO];
-  _source6 = listeningSocket6 > 0 ? [self _createDispatchSourceWithListeningSocket:listeningSocket6 isIPv6:YES] : NULL;  // ODataStore port
+  _source6 = GCDWebServerSocketIsValid(listeningSocket6) ? [self _createDispatchSourceWithListeningSocket:listeningSocket6 isIPv6:YES] : NULL;  // ODataStore port
   _port = port;
   _bindToLocalhost = bindToLocalhost;
 
