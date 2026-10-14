@@ -36,6 +36,8 @@
 #import <libkern/OSAtomic.h>
 #endif
 
+#import <stdatomic.h>
+
 #import "GCDWebServerPrivate.h"
 
 #define kHeadersReadCapacity (1 * 1024)
@@ -78,8 +80,48 @@ NS_ASSUME_NONNULL_BEGIN
 
 NS_ASSUME_NONNULL_END
 
+// ODataStore port: a connection reads and writes through dispatch I/O channels of its own, one each, so that a pending
+// read can be cancelled (the read timeout) on every platform and the answer still written. The socket may be closed
+// only when libdispatch is done with it (both channels' cleanup handlers) and the connection is done with it
+// (-_finish), whichever comes last; this closes it then. The cleanup handlers hold it rather than the connection,
+// which may be gone by then.
+@interface GCDWebServerSocketCloser : NSObject
+- (instancetype)initWithSocket:(GCDWebServerSocketHandle)socket;
+- (void)done;
+@end
+
+@implementation GCDWebServerSocketCloser {
+  GCDWebServerSocketHandle _socket;
+  atomic_int _pending;
+}
+
+- (instancetype)initWithSocket:(GCDWebServerSocketHandle)socket {
+  if ((self = [super init])) {
+    _socket = socket;
+    atomic_init(&_pending, 3);  // The read channel, the write channel and -_finish
+  }
+  return self;
+}
+
+- (void)done {
+  if (atomic_fetch_sub(&_pending, 1) != 1) {
+    return;
+  }
+  if (GCDWebServerSocketClose(_socket) != 0) {
+    int code = GCDWebServerSocketLastError();
+    GWS_LOG_ERROR(@"Failed closing socket %i for connection: %@ (%i)", (int)_socket, GCDWebServerSocketErrorString(code), code);
+  } else {
+    GWS_LOG_DEBUG(@"Did close connection on socket %i", (int)_socket);
+  }
+}
+
+@end
+
 @implementation GCDWebServerConnection {
   GCDWebServerSocketHandle _socket;
+  dispatch_io_t _readChannel;  // ODataStore port: see GCDWebServerSocketCloser
+  dispatch_io_t _writeChannel;  // ODataStore port: see GCDWebServerSocketCloser
+  GCDWebServerSocketCloser* _socketCloser;
   BOOL _virtualHEAD;
 
   GCDWebServerHTTPMessage* _requestMessage;  // ODataStore port: was a CFHTTPMessageRef
@@ -166,7 +208,7 @@ NS_ASSUME_NONNULL_END
         GWS_LOG_WARNING(@"Timed out reading request on socket %i", strongSelf->_socket);
       }
       strongSelf->_abortStatusCode = kGCDWebServerHTTPStatusCode_RequestTimeout;
-      GCDWebServerSocketShutdownRead(strongSelf->_socket);  // Makes the pending read complete with end-of-file
+      dispatch_io_close(strongSelf->_readChannel, DISPATCH_IO_STOP);  // Makes the pending read complete, cancelled
     }
   });
   dispatch_resume(_readTimer);
@@ -516,6 +558,16 @@ NS_ASSUME_NONNULL_END
     }
     _opened = YES;
 
+    // ODataStore port: see GCDWebServerSocketCloser
+    GCDWebServerSocketCloser* closer = [[GCDWebServerSocketCloser alloc] initWithSocket:_socket];
+    _socketCloser = closer;
+    _readChannel = dispatch_io_create(DISPATCH_IO_STREAM, (dispatch_fd_t)_socket, dispatch_get_global_queue(_server.dispatchQueuePriority, 0), ^(int error) {
+      [closer done];
+    });
+    _writeChannel = dispatch_io_create(DISPATCH_IO_STREAM, (dispatch_fd_t)_socket, dispatch_get_global_queue(_server.dispatchQueuePriority, 0), ^(int error) {
+      [closer done];
+    });
+
     [self _startReadTimer];  // ODataStore port
     [self _readRequestHeaders];
   }
@@ -539,12 +591,18 @@ NS_ASSUME_NONNULL_END
   _finished = YES;
   [self _cancelReadTimer];
 
-  int result = GCDWebServerSocketClose(_socket);  // ODataStore port: GCDWebServerPlatform.h
-  if (result != 0) {
-    int code = GCDWebServerSocketLastError();
-    GWS_LOG_ERROR(@"Failed closing socket %i for connection: %@ (%i)", (int)_socket, GCDWebServerSocketErrorString(code), code);
-  } else {
-    GWS_LOG_DEBUG(@"Did close connection on socket %i", _socket);
+  // ODataStore port: the socket is closed once the read channel is done with it too (GCDWebServerSocketCloser);
+  // a connection whose -open failed has neither, and its socket was closed then
+  if (_readChannel) {
+    dispatch_io_close(_readChannel, DISPATCH_IO_STOP);
+    dispatch_io_close(_writeChannel, DISPATCH_IO_STOP);
+#if !OS_OBJECT_USE_OBJC_RETAIN_RELEASE
+    dispatch_release(_readChannel);
+    dispatch_release(_writeChannel);
+#endif
+    _readChannel = NULL;
+    _writeChannel = NULL;
+    [_socketCloser done];
   }
 
   if (_opened) {
@@ -564,16 +622,35 @@ NS_ASSUME_NONNULL_END
 
 - (void)readData:(NSMutableData*)data withLength:(NSUInteger)length completionBlock:(ReadDataCompletionBlock)block {
   block = [block copy];  // ODataStore port: heap-copy block parameters first, see PORTING.md (libobjc2 stack-block leak)
-  dispatch_read(_socket, length, dispatch_get_global_queue(_server.dispatchQueuePriority, 0), ^(dispatch_data_t buffer, int error) {
+  // ODataStore port: as dispatch_read() does (wait for data, then take what has arrived, up to length), but cancellable
+  // by the read timeout on every platform (see GCDWebServerSocketCloser): the connection's channel waits for the first
+  // byte, then the rest of what has arrived comes straight from the socket, which libdispatch made non-blocking. Only a
+  // dispatch_read() completes early when no more has arrived; a channel's read would wait for all of length.
+  NSUInteger originalLength = data.length;
+  dispatch_io_read(_readChannel, 0, 1, dispatch_get_global_queue(_server.dispatchQueuePriority, 0), ^(bool done, dispatch_data_t buffer, int error) {
     @autoreleasepool {
-      if (error == 0) {
-        size_t size = dispatch_data_get_size(buffer);
-        if (size > 0) {
-          NSUInteger originalLength = data.length;
-          dispatch_data_apply(buffer, ^bool(dispatch_data_t region, size_t chunkOffset, const void* chunkBytes, size_t chunkSize) {
-            [data appendBytes:chunkBytes length:chunkSize];
-            return true;
-          });
+      if (buffer) {
+        dispatch_data_apply(buffer, ^bool(dispatch_data_t region, size_t chunkOffset, const void* chunkBytes, size_t chunkSize) {
+          [data appendBytes:chunkBytes length:chunkSize];
+          return true;
+        });
+      }
+      if (!done) {
+        return;
+      }
+      if ((error == 0) && (data.length > originalLength)) {
+        char more[16 * 1024];
+        while (data.length - originalLength < length) {
+          size_t wanted = MIN(sizeof(more), length - (data.length - originalLength));
+          long received = recv(self->_socket, more, (int)wanted, 0);
+          if (received <= 0) {
+            break;  // Nothing more yet (EAGAIN), or the end: the next read finds out which
+          }
+          [data appendBytes:more length:(NSUInteger)received];
+        }
+      }
+      if ((error == 0) || ((error == ECANCELED) && self->_abortStatusCode)) {
+        if ((error == 0) && (data.length > originalLength)) {
           [self didReadBytes:((char*)data.bytes + originalLength) length:(data.length - originalLength)];
           block(YES);
         } else {
@@ -754,10 +831,13 @@ static inline NSUInteger _ScanHexNumber(const void* bytes, NSUInteger size) {
   dispatch_data_t buffer = dispatch_data_create(data.bytes, data.length, dispatch_get_global_queue(_server.dispatchQueuePriority, 0), ^{
     [data self];  // Keeps ARC from releasing data too early
   });
-  dispatch_write(_socket, buffer, dispatch_get_global_queue(_server.dispatchQueuePriority, 0), ^(dispatch_data_t remainingData, int error) {
+  // ODataStore port: through the connection's write channel (see GCDWebServerSocketCloser)
+  dispatch_io_write(_writeChannel, 0, buffer, dispatch_get_global_queue(_server.dispatchQueuePriority, 0), ^(bool done, dispatch_data_t remainingData, int error) {
+    if (!done) {
+      return;
+    }
     @autoreleasepool {
       if (error == 0) {
-        GWS_DCHECK(remainingData == NULL);
         [self didWriteBytes:data.bytes length:data.length];
         block(YES);
       } else {

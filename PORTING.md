@@ -149,8 +149,14 @@ Added:
   Content-Length gets 413 before the body is read (also before
   `100 Continue`); a chunked body gets 413 as soon as a chunk size goes over.
 - `GCDWebServerOption_ReadTimeout` (default 60 s, 0 disables): the time from
-  accept to the end of the request body. When it runs out the read side is
-  shut down and the server answers 408.
+  accept to the end of the request body. When it runs out the pending read
+  is cancelled and the server answers 408. A connection reads and writes
+  through dispatch I/O channels of its own, one each, rather than with
+  `dispatch_read()` and `dispatch_write()`: closing the read channel is what
+  cancels a read on every platform (shutting the socket's read side down
+  wakes a pending read on POSIX, not on Windows). A read waits on its channel
+  for the first byte and takes the rest of what has arrived straight from the
+  socket, as `dispatch_read()` did.
 - Chunked bodies: the chunk-size line is limited to 4 KiB and the trailer
   section to the head size limit.
 - `GCDWebServerOption_KeepAliveTimeout` (default 0: off, as upstream) and
@@ -176,7 +182,9 @@ Fixed along the way:
 - A request path that does not unescape (`/%FF`) got 500 and, in `DEBUG`
   builds, `abort()`. Now it gets 400.
 - The socket is closed as soon as the last byte of the response is written
-  (`-_finish`), rather than when the connection object is deallocated.
+  (`-_finish`) and libdispatch has let go of it (both channels' cleanup
+  handlers, `GCDWebServerSocketCloser`), rather than when the connection
+  object is deallocated.
   `-close` and the delegate's disconnect bookkeeping run at the same point.
 - Listening on every address (not bound to localhost) failed on Linux: the
   IPv6 wildcard socket also takes IPv4 there unless `IPV6_V6ONLY` is set,

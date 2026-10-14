@@ -20,8 +20,6 @@ int GCDWebServerSocketClose(GCDWebServerSocketHandle socket);
 /* The last socket call's error, as an errno value. */
 int GCDWebServerSocketLastError(void);
 NSString* GCDWebServerSocketErrorString(int error);
-/* Makes a pending read on the socket complete with end-of-file. */
-void GCDWebServerSocketShutdownRead(GCDWebServerSocketHandle socket);
 void GCDWebServerSocketSetReceiveTimeout(GCDWebServerSocketHandle socket, int seconds);
 /* A write to a socket the peer has closed must not kill the process:
    SO_NOSIGPIPE on the socket where there is one, else SIGPIPE ignored

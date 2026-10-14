@@ -79,10 +79,6 @@ NSString* GCDWebServerSocketErrorString(int error) {
   return [NSString stringWithUTF8String:strerror(error)];
 }
 
-void GCDWebServerSocketShutdownRead(GCDWebServerSocketHandle socket) {
-  shutdown(socket, SD_RECEIVE);
-}
-
 void GCDWebServerSocketSetReceiveTimeout(GCDWebServerSocketHandle socket, int seconds) {
   DWORD milliseconds = (DWORD)seconds * 1000;  // Windows takes milliseconds, not a timeval
   setsockopt(socket, SOL_SOCKET, SO_RCVTIMEO, (const char*)&milliseconds, sizeof(milliseconds));

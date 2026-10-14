@@ -40,10 +40,6 @@ NSString* GCDWebServerSocketErrorString(int error) {
   return [NSString stringWithUTF8String:strerror(error)];
 }
 
-void GCDWebServerSocketShutdownRead(GCDWebServerSocketHandle socket) {
-  shutdown(socket, SHUT_RD);
-}
-
 void GCDWebServerSocketSetReceiveTimeout(GCDWebServerSocketHandle socket, int seconds) {
   struct timeval timeout = {seconds, 0};
   setsockopt(socket, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
