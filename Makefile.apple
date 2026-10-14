@@ -13,7 +13,8 @@
 # A user links the frameworks it needs: Foundation, SystemConfiguration and
 # CoreServices on macOS (MobileCoreServices and UIKit on iOS), and libz.
 B         := build
-SOURCES   := $(wildcard GCDWebServer/Core/*.m GCDWebServer/Requests/*.m GCDWebServer/Responses/*.m)
+SOURCES   := $(wildcard GCDWebServer/Core/*.m GCDWebServer/Requests/*.m GCDWebServer/Responses/*.m) \
+             GCDWebServer/Platform/POSIX/GCDWebServerPlatform.m
 HEADERS   := GCDWebServer/Core/GCDWebServer.h GCDWebServer/Core/GCDWebServerConnection.h \
 	GCDWebServer/Core/GCDWebServerFunctions.h GCDWebServer/Core/GCDWebServerHTTPStatusCodes.h \
 	GCDWebServer/Core/GCDWebServerRequest.h GCDWebServer/Core/GCDWebServerResponse.h \
@@ -21,7 +22,7 @@ HEADERS   := GCDWebServer/Core/GCDWebServer.h GCDWebServer/Core/GCDWebServerConn
 	GCDWebServer/Requests/GCDWebServerMultiPartFormRequest.h GCDWebServer/Requests/GCDWebServerURLEncodedFormRequest.h \
 	GCDWebServer/Responses/GCDWebServerDataResponse.h GCDWebServer/Responses/GCDWebServerErrorResponse.h \
 	GCDWebServer/Responses/GCDWebServerFileResponse.h GCDWebServer/Responses/GCDWebServerStreamedResponse.h
-INCLUDES  := -IGCDWebServer/Core -IGCDWebServer/Requests -IGCDWebServer/Responses
+INCLUDES  := -IGCDWebServer/Core -IGCDWebServer/Requests -IGCDWebServer/Responses -IGCDWebServer/Platform/POSIX
 CFLAGS    := -fobjc-arc -fblocks -fobjc-exceptions -fmodules -O2 -Wall
 FLAGS_macos     := -arch arm64 -arch x86_64 -isysroot $(shell xcrun --sdk macosx --show-sdk-path) -mmacosx-version-min=11.0
 FLAGS_device    := -arch arm64 -isysroot $(shell xcrun --sdk iphoneos --show-sdk-path) -miphoneos-version-min=15.0

@@ -33,17 +33,8 @@
 #import <TargetConditionals.h>
 #if TARGET_OS_IPHONE
 #import <MobileCoreServices/MobileCoreServices.h>
-#else
-#import <SystemConfiguration/SystemConfiguration.h>
 #endif
 #endif
-
-#import <ifaddrs.h>
-#import <net/if.h>
-#import <netdb.h>
-#import <netinet/in.h>
-#import <sys/socket.h>
-#import <sys/types.h>
 
 #import "GCDWebServerPrivate.h"
 
@@ -406,54 +397,7 @@ NSString* GCDWebServerStringFromSockAddr(const struct sockaddr* addr, BOOL inclu
   return includeService ? [NSString stringWithFormat:@"%s:%s", hostBuffer, serviceBuffer] : (NSString*)[NSString stringWithUTF8String:hostBuffer];
 }
 
-NSString* GCDWebServerGetPrimaryIPAddress(BOOL useIPv6) {
-  NSString* address = nil;
-#if TARGET_OS_IPHONE
-#if !TARGET_IPHONE_SIMULATOR && !TARGET_OS_TV
-  const char* primaryInterface = "en0";  // WiFi interface on iOS
-#endif
-#elif defined(__APPLE__)
-  const char* primaryInterface = NULL;
-  SCDynamicStoreRef store = SCDynamicStoreCreate(kCFAllocatorDefault, CFSTR("GCDWebServer"), NULL, NULL);
-  if (store) {
-    CFPropertyListRef info = SCDynamicStoreCopyValue(store, CFSTR("State:/Network/Global/IPv4"));  // There is no equivalent for IPv6 but the primary interface should be the same
-    if (info) {
-      NSString* interface = [(__bridge NSDictionary*)info objectForKey:@"PrimaryInterface"];
-      if (interface) {
-        primaryInterface = [[NSString stringWithString:interface] UTF8String];  // Copy string to auto-release pool
-      }
-      CFRelease(info);
-    }
-    CFRelease(store);
-  }
-  if (primaryInterface == NULL) {
-    primaryInterface = "lo0";
-  }
-#endif  // ODataStore port: without SystemConfiguration, take the first interface that is up and not loopback
-  struct ifaddrs* list;
-  if (getifaddrs(&list) >= 0) {
-    for (struct ifaddrs* ifap = list; ifap; ifap = ifap->ifa_next) {
-#if TARGET_IPHONE_SIMULATOR || TARGET_OS_TV
-      // Assume en0 is Ethernet and en1 is WiFi since there is no way to use SystemConfiguration framework in iOS Simulator
-      // Assumption holds for Apple TV running tvOS
-      if (strcmp(ifap->ifa_name, "en0") && strcmp(ifap->ifa_name, "en1"))
-#elif !defined(__APPLE__)
-      if ((ifap->ifa_addr == NULL) || (ifap->ifa_flags & IFF_LOOPBACK))
-#else
-      if (strcmp(ifap->ifa_name, primaryInterface))
-#endif
-      {
-        continue;
-      }
-      if ((ifap->ifa_flags & IFF_UP) && ((!useIPv6 && (ifap->ifa_addr->sa_family == AF_INET)) || (useIPv6 && (ifap->ifa_addr->sa_family == AF_INET6)))) {
-        address = GCDWebServerStringFromSockAddr(ifap->ifa_addr, NO);
-        break;
-      }
-    }
-    freeifaddrs(list);
-  }
-  return address;
-}
+// ODataStore port: GCDWebServerGetPrimaryIPAddress() is in GCDWebServerPlatform.m, POSIX's and Windows'.
 
 #if __GCDWEBSERVER_ENABLE_DIGEST_AUTH__
 

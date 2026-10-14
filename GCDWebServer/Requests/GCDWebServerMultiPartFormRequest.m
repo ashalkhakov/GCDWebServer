@@ -208,7 +208,7 @@ static NSData* _dashNewlineData = nil;
           }
         } else if (_fileName) {
           NSString* path = [NSTemporaryDirectory() stringByAppendingPathComponent:[[NSProcessInfo processInfo] globallyUniqueString]];
-          _tmpFile = open([path fileSystemRepresentation], O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+          _tmpFile = GCDWebServerOpenFile(path, O_CREAT | O_TRUNC | O_WRONLY);  // ODataStore port: binary on Windows
           if (_tmpFile > 0) {
             _tmpPath = [path copy];
           } else {

@@ -47,7 +47,7 @@
 }
 
 - (BOOL)open:(NSError**)error {
-  _file = open([_temporaryPath fileSystemRepresentation], O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+  _file = GCDWebServerOpenFile(_temporaryPath, O_CREAT | O_TRUNC | O_WRONLY);  // ODataStore port: binary on Windows
   if (_file <= 0) {
     if (error) {
       *error = GCDWebServerMakePosixError(errno);

@@ -1,6 +1,6 @@
 diff -ruN GCDWebServer-3.5.4/Core/GCDWebServer.h GCDWebServer-ported/Core/GCDWebServer.h
---- GCDWebServer-3.5.4/Core/GCDWebServer.h	2026-10-01 17:43:45
-+++ GCDWebServer-ported/Core/GCDWebServer.h	2026-10-01 17:43:45
+--- GCDWebServer-3.5.4/Core/GCDWebServer.h	2026-10-14 18:58:29
++++ GCDWebServer-ported/Core/GCDWebServer.h	2026-10-14 18:58:29
 @@ -25,7 +25,20 @@
   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
   */
@@ -117,8 +117,8 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServer.h GCDWebServer-ported/Core/GCDWeb
  @class GCDWebServer;
  
 diff -ruN GCDWebServer-3.5.4/Core/GCDWebServer.m GCDWebServer-ported/Core/GCDWebServer.m
---- GCDWebServer-3.5.4/Core/GCDWebServer.m	2026-10-01 17:43:45
-+++ GCDWebServer-ported/Core/GCDWebServer.m	2026-10-01 17:43:45
+--- GCDWebServer-3.5.4/Core/GCDWebServer.m	2026-10-14 18:58:29
++++ GCDWebServer-ported/Core/GCDWebServer.m	2026-10-14 18:58:29
 @@ -29,7 +29,9 @@
  #error GCDWebServer requires ARC
  #endif
@@ -129,10 +129,11 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServer.m GCDWebServer-ported/Core/GCDWeb
  #if TARGET_OS_IPHONE
  #import <UIKit/UIKit.h>
  #else
-@@ -38,7 +40,10 @@
+@@ -37,8 +39,10 @@
+ #import <AppKit/AppKit.h>
  #endif
  #endif
- #import <netinet/in.h>
+-#import <netinet/in.h>
 +#if defined(__APPLE__)
  #import <dns_sd.h>
 +#endif
@@ -140,7 +141,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServer.m GCDWebServer-ported/Core/GCDWeb
  
  #import "GCDWebServerPrivate.h"
  
-@@ -64,6 +69,11 @@
+@@ -64,6 +68,11 @@
  NSString* const GCDWebServerOption_AutomaticallyMapHEADToGET = @"AutomaticallyMapHEADToGET";
  NSString* const GCDWebServerOption_ConnectedStateCoalescingInterval = @"ConnectedStateCoalescingInterval";
  NSString* const GCDWebServerOption_DispatchQueuePriority = @"DispatchQueuePriority";
@@ -152,7 +153,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServer.m GCDWebServer-ported/Core/GCDWeb
  #if TARGET_OS_IPHONE
  NSString* const GCDWebServerOption_AutomaticallySuspendInBackground = @"AutomaticallySuspendInBackground";
  #endif
-@@ -72,12 +82,8 @@
+@@ -72,12 +81,8 @@
  NSString* const GCDWebServerAuthenticationMethod_DigestAccess = @"DigestAccess";
  
  #if defined(__GCDWEBSERVER_LOGGING_FACILITY_BUILTIN__)
@@ -166,7 +167,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServer.m GCDWebServer-ported/Core/GCDWeb
  
  #if !TARGET_OS_IPHONE
  static BOOL _run;
-@@ -89,21 +95,15 @@
+@@ -89,21 +94,15 @@
  
  void GCDWebServerLogMessage(GCDWebServerLoggingLevel level, NSString* format, ...) {
    static const char* levelNames[] = {"DEBUG", "VERBOSE", "INFO", "WARNING", "ERROR"};
@@ -196,7 +197,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServer.m GCDWebServer-ported/Core/GCDWeb
  }
  
  #endif
-@@ -123,11 +123,16 @@
+@@ -123,11 +122,16 @@
  // https://developer.apple.com/library/mac/documentation/General/Conceptual/ConcurrencyProgrammingGuide/OperationQueues/OperationQueues.html
  // The main queue works with the application’s run loop to interleave the execution of queued tasks with the execution of other event sources attached to the run loop
  // TODO: Ensure all scheduled blocks on the main queue are also executed
@@ -214,7 +215,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServer.m GCDWebServer-ported/Core/GCDWeb
  }
  
  #endif
-@@ -135,6 +140,8 @@
+@@ -135,6 +139,8 @@
  @implementation GCDWebServerHandler
  
  - (instancetype)initWithMatchBlock:(GCDWebServerMatchBlock _Nonnull)matchBlock asyncProcessBlock:(GCDWebServerAsyncProcessBlock _Nonnull)processBlock {
@@ -223,7 +224,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServer.m GCDWebServer-ported/Core/GCDWeb
    if ((self = [super init])) {
      _matchBlock = [matchBlock copy];
      _asyncProcessBlock = [processBlock copy];
-@@ -150,15 +157,16 @@
+@@ -150,15 +156,16 @@
    NSMutableArray<GCDWebServerHandler*>* _handlers;
    NSInteger _activeConnections;  // Accessed through _syncQueue only
    BOOL _connected;  // Accessed on main thread only
@@ -242,7 +243,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServer.m GCDWebServer-ported/Core/GCDWeb
    CFNetServiceRef _registrationService;
    CFNetServiceRef _resolutionService;
    DNSServiceRef _dnsService;
-@@ -166,6 +174,7 @@
+@@ -166,6 +173,7 @@
    CFRunLoopSourceRef _dnsSource;
    NSString* _dnsAddress;
    NSUInteger _dnsPort;
@@ -250,7 +251,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServer.m GCDWebServer-ported/Core/GCDWeb
    BOOL _bindToLocalhost;
  #if TARGET_OS_IPHONE
    BOOL _suspendInBackground;
-@@ -240,16 +249,26 @@
+@@ -240,16 +248,26 @@
    }
  }
  
@@ -282,7 +283,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServer.m GCDWebServer-ported/Core/GCDWeb
          if (self->_connected == NO) {
            [self _didConnect];
          }
-@@ -299,17 +318,15 @@
+@@ -299,17 +317,15 @@
      if (self->_activeConnections == 0) {
        dispatch_async(dispatch_get_main_queue(), ^{
          if ((self->_disconnectDelay > 0.0) && (self->_source4 != NULL)) {
@@ -306,7 +307,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServer.m GCDWebServer-ported/Core/GCDWeb
          } else {
            [self _didDisconnect];
          }
-@@ -319,16 +336,26 @@
+@@ -319,16 +335,26 @@
  }
  
  - (NSString*)bonjourName {
@@ -333,7 +334,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServer.m GCDWebServer-ported/Core/GCDWeb
    [self addHandlerWithMatchBlock:matchBlock
                 asyncProcessBlock:^(GCDWebServerRequest* request, GCDWebServerCompletionBlock completionBlock) {
                   completionBlock(processBlock(request));
-@@ -336,6 +363,8 @@
+@@ -336,6 +362,8 @@
  }
  
  - (void)addHandlerWithMatchBlock:(GCDWebServerMatchBlock)matchBlock asyncProcessBlock:(GCDWebServerAsyncProcessBlock)processBlock {
@@ -342,7 +343,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServer.m GCDWebServer-ported/Core/GCDWeb
    GWS_DCHECK(_options == nil);
    GCDWebServerHandler* handler = [[GCDWebServerHandler alloc] initWithMatchBlock:matchBlock asyncProcessBlock:processBlock];
    [_handlers insertObject:handler atIndex:0];
-@@ -346,6 +375,8 @@
+@@ -346,6 +374,8 @@
    [_handlers removeAllObjects];
  }
  
@@ -351,7 +352,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServer.m GCDWebServer-ported/Core/GCDWeb
  static void _NetServiceRegisterCallBack(CFNetServiceRef service, CFStreamError* error, void* info) {
    GWS_DCHECK([NSThread isMainThread]);
    @autoreleasepool {
-@@ -414,6 +445,8 @@
+@@ -414,6 +444,8 @@
    }
  }
  
@@ -360,43 +361,155 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServer.m GCDWebServer-ported/Core/GCDWeb
  static inline id _GetOption(NSDictionary<NSString*, id>* options, NSString* key, id defaultValue) {
    id value = [options objectForKey:key];
    return value ? value : defaultValue;
-@@ -440,6 +473,11 @@
-   if (listeningSocket > 0) {
+@@ -431,54 +463,65 @@
+ #endif
+ }
+ 
+-- (int)_createListeningSocket:(BOOL)useIPv6
+-                 localAddress:(const void*)address
+-                       length:(socklen_t)length
+-        maxPendingConnections:(NSUInteger)maxPendingConnections
+-                        error:(NSError**)error {
+-  int listeningSocket = socket(useIPv6 ? PF_INET6 : PF_INET, SOCK_STREAM, IPPROTO_TCP);
+-  if (listeningSocket > 0) {
++// ODataStore port: sockets through GCDWebServerPlatform.h (a SOCKET on Windows, its errors as errno values).
++- (GCDWebServerSocketHandle)_createListeningSocket:(BOOL)useIPv6
++                                      localAddress:(const void*)address
++                                            length:(socklen_t)length
++                             maxPendingConnections:(NSUInteger)maxPendingConnections
++                                             error:(NSError**)error {
++  GCDWebServerSocketsStart();
++  GCDWebServerSocketHandle listeningSocket = socket(useIPv6 ? PF_INET6 : PF_INET, SOCK_STREAM, IPPROTO_TCP);
++  if (GCDWebServerSocketIsValid(listeningSocket)) {
      int yes = 1;
-     setsockopt(listeningSocket, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
+-    setsockopt(listeningSocket, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
++    setsockopt(listeningSocket, SOL_SOCKET, SO_REUSEADDR, (const void*)&yes, sizeof(yes));
 +    if (useIPv6) {
 +      // ODataStore port: IPv6 only, beside the IPv4 socket; on Linux an IPv6 wildcard socket otherwise takes IPv4 too,
 +      // and binding both to the same port fails with EADDRINUSE
-+      setsockopt(listeningSocket, IPPROTO_IPV6, IPV6_V6ONLY, &yes, sizeof(yes));
++      setsockopt(listeningSocket, IPPROTO_IPV6, IPV6_V6ONLY, (const void*)&yes, sizeof(yes));
 +    }
  
      if (bind(listeningSocket, address, length) == 0) {
        if (listen(listeningSocket, (int)maxPendingConnections) == 0) {
-@@ -501,8 +539,10 @@
+-        GWS_LOG_DEBUG(@"Did open %s listening socket %i", useIPv6 ? "IPv6" : "IPv4", listeningSocket);
++        GWS_LOG_DEBUG(@"Did open %s listening socket %i", useIPv6 ? "IPv6" : "IPv4", (int)listeningSocket);
+         return listeningSocket;
+       } else {
++        int code = GCDWebServerSocketLastError();
+         if (error) {
+-          *error = GCDWebServerMakePosixError(errno);
++          *error = GCDWebServerMakePosixError(code);
+         }
+-        GWS_LOG_ERROR(@"Failed starting %s listening socket: %s (%i)", useIPv6 ? "IPv6" : "IPv4", strerror(errno), errno);
+-        close(listeningSocket);
++        GWS_LOG_ERROR(@"Failed starting %s listening socket: %@ (%i)", useIPv6 ? "IPv6" : "IPv4", GCDWebServerSocketErrorString(code), code);
++        GCDWebServerSocketClose(listeningSocket);
+       }
+     } else {
++      int code = GCDWebServerSocketLastError();
+       if (error) {
+-        *error = GCDWebServerMakePosixError(errno);
++        *error = GCDWebServerMakePosixError(code);
+       }
+-      GWS_LOG_ERROR(@"Failed binding %s listening socket: %s (%i)", useIPv6 ? "IPv6" : "IPv4", strerror(errno), errno);
+-      close(listeningSocket);
++      GWS_LOG_ERROR(@"Failed binding %s listening socket: %@ (%i)", useIPv6 ? "IPv6" : "IPv4", GCDWebServerSocketErrorString(code), code);
++      GCDWebServerSocketClose(listeningSocket);
+     }
+ 
+   } else {
++    int code = GCDWebServerSocketLastError();
+     if (error) {
+-      *error = GCDWebServerMakePosixError(errno);
++      *error = GCDWebServerMakePosixError(code);
+     }
+-    GWS_LOG_ERROR(@"Failed creating %s listening socket: %s (%i)", useIPv6 ? "IPv6" : "IPv4", strerror(errno), errno);
++    GWS_LOG_ERROR(@"Failed creating %s listening socket: %@ (%i)", useIPv6 ? "IPv6" : "IPv4", GCDWebServerSocketErrorString(code), code);
+   }
+-  return -1;
++  return kGCDWebServerInvalidSocket;
+ }
+ 
+-- (dispatch_source_t)_createDispatchSourceWithListeningSocket:(int)listeningSocket isIPv6:(BOOL)isIPv6 {
++- (dispatch_source_t)_createDispatchSourceWithListeningSocket:(GCDWebServerSocketHandle)listeningSocket isIPv6:(BOOL)isIPv6 {
+   dispatch_group_enter(_sourceGroup);
+-  dispatch_source_t source = dispatch_source_create(DISPATCH_SOURCE_TYPE_READ, listeningSocket, 0, dispatch_get_global_queue(_dispatchQueuePriority, 0));
++  dispatch_source_t source = dispatch_source_create(DISPATCH_SOURCE_TYPE_READ, (uintptr_t)listeningSocket, 0, dispatch_get_global_queue(_dispatchQueuePriority, 0));
+   dispatch_source_set_cancel_handler(source, ^{
+     @autoreleasepool {
+-      int result = close(listeningSocket);
++      int result = GCDWebServerSocketClose(listeningSocket);
+       if (result != 0) {
+-        GWS_LOG_ERROR(@"Failed closing %s listening socket: %s (%i)", isIPv6 ? "IPv6" : "IPv4", strerror(errno), errno);
++        int code = GCDWebServerSocketLastError();
++        GWS_LOG_ERROR(@"Failed closing %s listening socket: %@ (%i)", isIPv6 ? "IPv6" : "IPv4", GCDWebServerSocketErrorString(code), code);
+       } else {
+-        GWS_LOG_DEBUG(@"Did close %s listening socket %i", isIPv6 ? "IPv6" : "IPv4", listeningSocket);
++        GWS_LOG_DEBUG(@"Did close %s listening socket %i", isIPv6 ? "IPv6" : "IPv4", (int)listeningSocket);
+       }
+     }
+     dispatch_group_leave(self->_sourceGroup);
+@@ -487,8 +530,8 @@
+     @autoreleasepool {
+       struct sockaddr_storage remoteSockAddr;
+       socklen_t remoteAddrLen = sizeof(remoteSockAddr);
+-      int socket = accept(listeningSocket, (struct sockaddr*)&remoteSockAddr, &remoteAddrLen);
+-      if (socket > 0) {
++      GCDWebServerSocketHandle socket = accept(listeningSocket, (struct sockaddr*)&remoteSockAddr, &remoteAddrLen);
++      if (GCDWebServerSocketIsValid(socket)) {
+         NSData* remoteAddress = [NSData dataWithBytes:&remoteSockAddr length:remoteAddrLen];
+ 
+         struct sockaddr_storage localSockAddr;
+@@ -501,13 +544,13 @@
            GWS_DNOT_REACHED();
          }
  
-+#ifdef SO_NOSIGPIPE
-         int noSigPipe = 1;
-         setsockopt(socket, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, sizeof(noSigPipe));  // Make sure this socket cannot generate SIG_PIPE
-+#endif  // ODataStore port: elsewhere SIGPIPE is ignored process-wide in -_start: (libdispatch does the writes, so MSG_NOSIGNAL is not an option)
+-        int noSigPipe = 1;
+-        setsockopt(socket, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, sizeof(noSigPipe));  // Make sure this socket cannot generate SIG_PIPE
++        GCDWebServerSocketNoBrokenPipeSignal(socket);  // Make sure this socket cannot generate SIG_PIPE; ODataStore port: see GCDWebServerIgnoreBrokenPipe()
  
          GCDWebServerConnection* connection = [(GCDWebServerConnection*)[self->_connectionClass alloc] initWithServer:self localAddress:localAddress remoteAddress:remoteAddress socket:socket];  // Connection will automatically retain itself while opened
          [connection self];  // Prevent compiler from complaining about unused variable / useless statement
-@@ -523,7 +563,9 @@
+       } else {
+-        GWS_LOG_ERROR(@"Failed accepting %s socket: %s (%i)", isIPv6 ? "IPv6" : "IPv4", strerror(errno), errno);
++        int code = GCDWebServerSocketLastError();
++        GWS_LOG_ERROR(@"Failed accepting %s socket: %@ (%i)", isIPv6 ? "IPv6" : "IPv4", GCDWebServerSocketErrorString(code), code);
+       }
+     }
+   });
+@@ -522,13 +565,15 @@
+   NSUInteger maxPendingConnections = [(NSNumber*)_GetOption(_options, GCDWebServerOption_MaxPendingConnections, @16) unsignedIntegerValue];
  
    struct sockaddr_in addr4;
-   bzero(&addr4, sizeof(addr4));
+-  bzero(&addr4, sizeof(addr4));
++  memset(&addr4, 0, sizeof(addr4));
 +#if defined(__APPLE__)
    addr4.sin_len = sizeof(addr4);
 +#endif
    addr4.sin_family = AF_INET;
    addr4.sin_port = htons(port);
    addr4.sin_addr.s_addr = bindToLocalhost ? htonl(INADDR_LOOPBACK) : htonl(INADDR_ANY);
-@@ -543,14 +585,27 @@
+-  int listeningSocket4 = [self _createListeningSocket:NO localAddress:&addr4 length:sizeof(addr4) maxPendingConnections:maxPendingConnections error:error];
+-  if (listeningSocket4 <= 0) {
++  GCDWebServerSocketHandle listeningSocket4 = [self _createListeningSocket:NO localAddress:&addr4 length:sizeof(addr4) maxPendingConnections:maxPendingConnections error:error];
++  if (!GCDWebServerSocketIsValid(listeningSocket4)) {
+     return NO;
+   }
+   if (port == 0) {
+@@ -537,20 +582,34 @@
+     if (getsockname(listeningSocket4, (struct sockaddr*)&addr, &addrlen) == 0) {
+       port = ntohs(addr.sin_port);
+     } else {
+-      GWS_LOG_ERROR(@"Failed retrieving socket address: %s (%i)", strerror(errno), errno);
++      int code = GCDWebServerSocketLastError();
++      GWS_LOG_ERROR(@"Failed retrieving socket address: %@ (%i)", GCDWebServerSocketErrorString(code), code);
+     }
+   }
  
    struct sockaddr_in6 addr6;
-   bzero(&addr6, sizeof(addr6));
+-  bzero(&addr6, sizeof(addr6));
++  memset(&addr6, 0, sizeof(addr6));
 +#if defined(__APPLE__)
    addr6.sin6_len = sizeof(addr6);
 +#endif
@@ -404,11 +517,12 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServer.m GCDWebServer-ported/Core/GCDWeb
    addr6.sin6_port = htons(port);
    addr6.sin6_addr = bindToLocalhost ? in6addr_loopback : in6addr_any;
 -  int listeningSocket6 = [self _createListeningSocket:YES localAddress:&addr6 length:sizeof(addr6) maxPendingConnections:maxPendingConnections error:error];
-+  NSError* error6 = nil;
-+  int listeningSocket6 = [self _createListeningSocket:YES localAddress:&addr6 length:sizeof(addr6) maxPendingConnections:maxPendingConnections error:&error6];
-   if (listeningSocket6 <= 0) {
+-  if (listeningSocket6 <= 0) {
 -    close(listeningSocket4);
 -    return NO;
++  NSError* error6 = nil;
++  GCDWebServerSocketHandle listeningSocket6 = [self _createListeningSocket:YES localAddress:&addr6 length:sizeof(addr6) maxPendingConnections:maxPendingConnections error:&error6];
++  if (!GCDWebServerSocketIsValid(listeningSocket6)) {
 +    // ODataStore port: a host without IPv6 (a container's network often is one) is served over IPv4 alone
 +    BOOL noIPv6 = [error6.domain isEqualToString:NSPOSIXErrorDomain] &&
 +                  (error6.code == EAFNOSUPPORT || error6.code == EPROTONOSUPPORT || error6.code == EADDRNOTAVAIL);
@@ -416,15 +530,15 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServer.m GCDWebServer-ported/Core/GCDWeb
 +      if (error) {
 +        *error = error6;
 +      }
-+      close(listeningSocket4);
++      GCDWebServerSocketClose(listeningSocket4);
 +      return NO;
 +    }
 +    GWS_LOG_WARNING(@"No IPv6 on this host: listening on IPv4 only");
-+    listeningSocket6 = -1;
++    listeningSocket6 = kGCDWebServerInvalidSocket;
    }
  
    _serverName = [(NSString*)_GetOption(_options, GCDWebServerOption_ServerName, NSStringFromClass([self class])) copy];
-@@ -558,28 +613,59 @@
+@@ -558,28 +617,52 @@
    if ([authenticationMethod isEqualToString:GCDWebServerAuthenticationMethod_Basic]) {
      _authenticationRealm = [(NSString*)_GetOption(_options, GCDWebServerOption_AuthenticationRealm, _serverName) copy];
      _authenticationBasicAccounts = [[NSMutableDictionary alloc] init];
@@ -440,9 +554,9 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServer.m GCDWebServer-ported/Core/GCDWeb
 +    if (error) {
 +      *error = [NSError errorWithDomain:kGCDWebServerErrorDomain code:-1 userInfo:@{NSLocalizedDescriptionKey : @"Digest access authentication is not supported"}];
 +    }
-+    close(listeningSocket4);
-+    if (listeningSocket6 > 0) {  // ODataStore port: there may be none
-+      close(listeningSocket6);
++    GCDWebServerSocketClose(listeningSocket4);
++    if (GCDWebServerSocketIsValid(listeningSocket6)) {  // ODataStore port: there may be none
++      GCDWebServerSocketClose(listeningSocket6);
 +    }
 +    _serverName = nil;
 +    _authenticationRealm = nil;
@@ -467,18 +581,11 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServer.m GCDWebServer-ported/Core/GCDWeb
 +  _keepAliveTimeout = [(NSNumber*)_GetOption(_options, GCDWebServerOption_KeepAliveTimeout, @0.0) doubleValue];  // ODataStore port
 +  _maxRequestsPerConnection = [(NSNumber*)_GetOption(_options, GCDWebServerOption_MaxRequestsPerConnection, @100) unsignedIntegerValue];
  
-+#if !defined(SO_NOSIGPIPE)
-+  // ODataStore port: without SO_NOSIGPIPE a write to a socket the peer has closed raises SIGPIPE, which
-+  // kills the process by default. Ignore it unless the application installed its own handler.
-+  struct sigaction currentAction;
-+  if ((sigaction(SIGPIPE, NULL, &currentAction) == 0) && (currentAction.sa_handler == SIG_DFL)) {
-+    signal(SIGPIPE, SIG_IGN);
-+  }
-+#endif
++  GCDWebServerIgnoreBrokenPipe();  // ODataStore port: where there is no SO_NOSIGPIPE
 +
    _source4 = [self _createDispatchSourceWithListeningSocket:listeningSocket4 isIPv6:NO];
 -  _source6 = [self _createDispatchSourceWithListeningSocket:listeningSocket6 isIPv6:YES];
-+  _source6 = listeningSocket6 > 0 ? [self _createDispatchSourceWithListeningSocket:listeningSocket6 isIPv6:YES] : NULL;  // ODataStore port
++  _source6 = GCDWebServerSocketIsValid(listeningSocket6) ? [self _createDispatchSourceWithListeningSocket:listeningSocket6 isIPv6:YES] : NULL;  // ODataStore port
    _port = port;
    _bindToLocalhost = bindToLocalhost;
  
@@ -486,7 +593,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServer.m GCDWebServer-ported/Core/GCDWeb
    NSString* bonjourName = _GetOption(_options, GCDWebServerOption_BonjourName, nil);
    NSString* bonjourType = _GetOption(_options, GCDWebServerOption_BonjourType, @"_http._tcp");
    if (bonjourName) {
-@@ -626,9 +712,12 @@
+@@ -626,9 +709,12 @@
        GWS_LOG_ERROR(@"Failed creating NAT port mapping (%i)", status);
      }
    }
@@ -500,7 +607,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServer.m GCDWebServer-ported/Core/GCDWeb
    GWS_LOG_INFO(@"%@ started on port %i and reachable at %@", [self class], (int)_port, self.serverURL);
    if ([_delegate respondsToSelector:@selector(webServerDidStart:)]) {
      dispatch_async(dispatch_get_main_queue(), ^{
-@@ -642,6 +731,7 @@
+@@ -642,6 +728,7 @@
  - (void)_stop {
    GWS_DCHECK(_source4 != NULL);
  
@@ -508,7 +615,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServer.m GCDWebServer-ported/Core/GCDWeb
    if (_dnsService) {
      _dnsAddress = nil;
      _dnsPort = 0;
-@@ -672,12 +762,17 @@
+@@ -672,12 +759,17 @@
      CFRelease(_registrationService);
      _registrationService = NULL;
    }
@@ -528,7 +635,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServer.m GCDWebServer-ported/Core/GCDWeb
  #endif
    _source6 = NULL;
  #if !OS_OBJECT_USE_OBJC_RETAIN_RELEASE
-@@ -693,10 +788,7 @@
+@@ -693,10 +785,7 @@
    _authenticationDigestAccounts = nil;
  
    dispatch_async(dispatch_get_main_queue(), ^{
@@ -540,7 +647,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServer.m GCDWebServer-ported/Core/GCDWeb
        [self _didDisconnect];
      }
    });
-@@ -795,6 +887,9 @@
+@@ -795,6 +884,9 @@
  }
  
  - (NSURL*)bonjourServerURL {
@@ -550,7 +657,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServer.m GCDWebServer-ported/Core/GCDWeb
    if (_source4 && _resolutionService) {
      NSString* name = (__bridge NSString*)CFNetServiceGetTargetHost(_resolutionService);
      if (name.length) {
-@@ -807,9 +902,13 @@
+@@ -807,9 +899,13 @@
      }
    }
    return nil;
@@ -564,7 +671,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServer.m GCDWebServer-ported/Core/GCDWeb
    if (_source4 && _dnsService && _dnsAddress && _dnsPort) {
      if (_dnsPort != 80) {
        return [NSURL URLWithString:[NSString stringWithFormat:@"http://%@:%i/", _dnsAddress, (int)_dnsPort]];
-@@ -818,6 +917,7 @@
+@@ -818,6 +914,7 @@
      }
    }
    return nil;
@@ -572,7 +679,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServer.m GCDWebServer-ported/Core/GCDWeb
  }
  
  - (BOOL)start {
-@@ -849,7 +949,14 @@
+@@ -849,7 +946,14 @@
    if ((termHandler != SIG_ERR) && (intHandler != SIG_ERR)) {
      if ([self startWithOptions:options error:error]) {
        while (_run) {
@@ -587,7 +694,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServer.m GCDWebServer-ported/Core/GCDWeb
        }
        [self stop];
        success = YES;
-@@ -868,6 +975,7 @@
+@@ -868,6 +972,7 @@
  @implementation GCDWebServer (Handlers)
  
  - (void)addDefaultHandlerForMethod:(NSString*)method requestClass:(Class)aClass processBlock:(GCDWebServerProcessBlock)block {
@@ -595,7 +702,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServer.m GCDWebServer-ported/Core/GCDWeb
    [self addDefaultHandlerForMethod:method
                        requestClass:aClass
                   asyncProcessBlock:^(GCDWebServerRequest* request, GCDWebServerCompletionBlock completionBlock) {
-@@ -876,6 +984,7 @@
+@@ -876,6 +981,7 @@
  }
  
  - (void)addDefaultHandlerForMethod:(NSString*)method requestClass:(Class)aClass asyncProcessBlock:(GCDWebServerAsyncProcessBlock)block {
@@ -603,7 +710,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServer.m GCDWebServer-ported/Core/GCDWeb
    [self
        addHandlerWithMatchBlock:^GCDWebServerRequest*(NSString* requestMethod, NSURL* requestURL, NSDictionary<NSString*, NSString*>* requestHeaders, NSString* urlPath, NSDictionary<NSString*, NSString*>* urlQuery) {
          if (![requestMethod isEqualToString:method]) {
-@@ -887,6 +996,7 @@
+@@ -887,6 +993,7 @@
  }
  
  - (void)addHandlerForMethod:(NSString*)method path:(NSString*)path requestClass:(Class)aClass processBlock:(GCDWebServerProcessBlock)block {
@@ -611,7 +718,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServer.m GCDWebServer-ported/Core/GCDWeb
    [self addHandlerForMethod:method
                         path:path
                 requestClass:aClass
-@@ -896,6 +1006,7 @@
+@@ -896,6 +1003,7 @@
  }
  
  - (void)addHandlerForMethod:(NSString*)method path:(NSString*)path requestClass:(Class)aClass asyncProcessBlock:(GCDWebServerAsyncProcessBlock)block {
@@ -619,7 +726,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServer.m GCDWebServer-ported/Core/GCDWeb
    if ([path hasPrefix:@"/"] && [aClass isSubclassOfClass:[GCDWebServerRequest class]]) {
      [self
          addHandlerWithMatchBlock:^GCDWebServerRequest*(NSString* requestMethod, NSURL* requestURL, NSDictionary<NSString*, NSString*>* requestHeaders, NSString* urlPath, NSDictionary<NSString*, NSString*>* urlQuery) {
-@@ -914,6 +1025,7 @@
+@@ -914,6 +1022,7 @@
  }
  
  - (void)addHandlerForMethod:(NSString*)method pathRegex:(NSString*)regex requestClass:(Class)aClass processBlock:(GCDWebServerProcessBlock)block {
@@ -627,7 +734,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServer.m GCDWebServer-ported/Core/GCDWeb
    [self addHandlerForMethod:method
                    pathRegex:regex
                 requestClass:aClass
-@@ -923,6 +1035,7 @@
+@@ -923,6 +1032,7 @@
  }
  
  - (void)addHandlerForMethod:(NSString*)method pathRegex:(NSString*)regex requestClass:(Class)aClass asyncProcessBlock:(GCDWebServerAsyncProcessBlock)block {
@@ -636,21 +743,20 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServer.m GCDWebServer-ported/Core/GCDWeb
    if (expression && [aClass isSubclassOfClass:[GCDWebServerRequest class]]) {
      [self
 diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerConnection.m GCDWebServer-ported/Core/GCDWebServerConnection.m
---- GCDWebServer-3.5.4/Core/GCDWebServerConnection.m	2026-10-01 17:43:45
-+++ GCDWebServer-ported/Core/GCDWebServerConnection.m	2026-10-01 17:43:45
-@@ -29,8 +29,11 @@
+--- GCDWebServer-3.5.4/Core/GCDWebServerConnection.m	2026-10-14 18:58:29
++++ GCDWebServer-ported/Core/GCDWebServerConnection.m	2026-10-14 18:58:29
+@@ -29,8 +29,9 @@
  #error GCDWebServer requires ARC
  #endif
  
 +#if defined(__APPLE__)
  #import <TargetConditionals.h>
+-#import <netdb.h>
 +#endif
- #import <netdb.h>
-+#import <sys/socket.h>
  #ifdef __GCDWEBSERVER_ENABLE_TESTING__
  #import <libkern/OSAtomic.h>
  #endif
-@@ -39,6 +42,7 @@
+@@ -39,6 +40,7 @@
  
  #define kHeadersReadCapacity (1 * 1024)
  #define kBodyReadCapacity (256 * 1024)
@@ -658,7 +764,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerConnection.m GCDWebServer-ported/C
  
  typedef void (^ReadDataCompletionBlock)(BOOL success);
  typedef void (^ReadHeadersCompletionBlock)(NSData* extraData);
-@@ -52,7 +56,9 @@
+@@ -52,7 +54,9 @@
  static NSData* _CRLFCRLFData = nil;
  static NSData* _continueData = nil;
  static NSData* _lastChunkData = nil;
@@ -668,7 +774,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerConnection.m GCDWebServer-ported/C
  #ifdef __GCDWEBSERVER_ENABLE_TESTING__
  static int32_t _connectionCounter = 0;
  #endif
-@@ -75,13 +81,21 @@
+@@ -75,13 +79,21 @@
  NS_ASSUME_NONNULL_END
  
  @implementation GCDWebServerConnection {
@@ -693,7 +799,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerConnection.m GCDWebServer-ported/C
    GCDWebServerResponse* _response;
    NSInteger _statusCode;
  
-@@ -105,19 +119,17 @@
+@@ -105,19 +117,17 @@
      GWS_DCHECK(_CRLFCRLFData);
    }
    if (_continueData == nil) {
@@ -717,7 +823,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerConnection.m GCDWebServer-ported/C
  }
  
  - (BOOL)isUsingIPv6 {
-@@ -127,14 +139,60 @@
+@@ -127,14 +137,60 @@
  
  - (void)_initializeResponseHeadersWithStatusCode:(NSInteger)statusCode {
    _statusCode = statusCode;
@@ -754,7 +860,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerConnection.m GCDWebServer-ported/C
 +        GWS_LOG_WARNING(@"Timed out reading request on socket %i", strongSelf->_socket);
 +      }
 +      strongSelf->_abortStatusCode = kGCDWebServerHTTPStatusCode_RequestTimeout;
-+      shutdown(strongSelf->_socket, SHUT_RD);  // Makes the pending read complete with end-of-file
++      GCDWebServerSocketShutdownRead(strongSelf->_socket);  // Makes the pending read complete with end-of-file
 +    }
 +  });
 +  dispatch_resume(_readTimer);
@@ -782,7 +888,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerConnection.m GCDWebServer-ported/C
  
    GCDWebServerResponse* preflightResponse = [self preflightRequest:_request];
    if (preflightResponse) {
-@@ -169,41 +227,52 @@
+@@ -169,41 +225,52 @@
    }
  
    if (_response) {
@@ -845,7 +951,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerConnection.m GCDWebServer-ported/C
        }
      }];
    } else {
-@@ -211,6 +280,58 @@
+@@ -211,6 +278,58 @@
    }
  }
  
@@ -904,7 +1010,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerConnection.m GCDWebServer-ported/C
  - (void)_readBodyWithLength:(NSUInteger)length initialData:(NSData*)initialData {
    NSError* error = nil;
    if (![_request performOpen:&error]) {
-@@ -235,6 +356,11 @@
+@@ -235,6 +354,11 @@
      [self readBodyWithRemainingLength:length
                        completionBlock:^(BOOL success) {
                          NSError* localError = nil;
@@ -916,7 +1022,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerConnection.m GCDWebServer-ported/C
                          if ([self->_request performClose:&localError]) {
                            [self _startProcessingRequest];
                          } else {
-@@ -264,6 +390,11 @@
+@@ -264,6 +388,11 @@
    [self readNextBodyChunk:chunkData
            completionBlock:^(BOOL success) {
              NSError* localError = nil;
@@ -928,7 +1034,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerConnection.m GCDWebServer-ported/C
              if ([self->_request performClose:&localError]) {
                [self _startProcessingRequest];
              } else {
-@@ -274,28 +405,29 @@
+@@ -274,28 +403,29 @@
  }
  
  - (void)_readRequestHeaders {
@@ -964,7 +1070,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerConnection.m GCDWebServer-ported/C
            NSDictionary* requestQuery = queryString ? GCDWebServerParseURLEncodedForm(queryString) : @{};
            if (requestMethod && requestURL && requestHeaders && requestPath && requestQuery) {
              for (self->_handler in self->_server.handlers) {
-@@ -309,6 +441,12 @@
+@@ -309,6 +439,12 @@
                self->_request.remoteAddressData = self.remoteAddressData;
                if ([self->_request hasBody]) {
                  [self->_request prepareForWriting];
@@ -977,7 +1083,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerConnection.m GCDWebServer-ported/C
                  if (self->_request.usesChunkedTransferEncoding || (extraData.length <= self->_request.contentLength)) {
                    NSString* expectHeader = [requestHeaders objectForKey:@"Expect"];
                    if (expectHeader) {
-@@ -321,6 +459,8 @@
+@@ -321,6 +457,8 @@
                                } else {
                                  [self _readBodyWithLength:self->_request.contentLength initialData:extraData];
                                }
@@ -986,7 +1092,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerConnection.m GCDWebServer-ported/C
                              }
                            }];
                      } else {
-@@ -339,6 +479,7 @@
+@@ -339,6 +477,7 @@
                    [self abortRequest:self->_request withStatusCode:kGCDWebServerHTTPStatusCode_BadRequest];
                  }
                } else {
@@ -994,7 +1100,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerConnection.m GCDWebServer-ported/C
                  [self _startProcessingRequest];
                }
              } else {
-@@ -347,16 +488,21 @@
+@@ -347,16 +486,21 @@
                [self abortRequest:self->_request withStatusCode:kGCDWebServerHTTPStatusCode_NotImplemented];
              }
            } else {
@@ -1020,7 +1126,13 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerConnection.m GCDWebServer-ported/C
    if ((self = [super init])) {
      _server = server;
      _localAddressData = localAddress;
-@@ -372,6 +518,7 @@
+@@ -367,11 +511,12 @@
+     [_server willStartConnection:self];
+ 
+     if (![self open]) {
+-      close(_socket);
++      GCDWebServerSocketClose(_socket);  // ODataStore port: GCDWebServerPlatform.h
+       return nil;
      }
      _opened = YES;
  
@@ -1028,11 +1140,12 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerConnection.m GCDWebServer-ported/C
      [self _readRequestHeaders];
    }
    return self;
-@@ -385,7 +532,15 @@
+@@ -385,10 +530,19 @@
    return GCDWebServerStringFromSockAddr(_remoteAddressData.bytes, YES);
  }
  
 -- (void)dealloc {
+-  int result = close(_socket);
 +// ODataStore port: the connection is finished as soon as the last write completes, instead of when it is deallocated,
 +// so a leaked reference to it (see PORTING.md) cannot keep the socket open. Idempotent; -dealloc calls it too.
 +- (void)_finish {
@@ -1042,10 +1155,15 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerConnection.m GCDWebServer-ported/C
 +  _finished = YES;
 +  [self _cancelReadTimer];
 +
-   int result = close(_socket);
++  int result = GCDWebServerSocketClose(_socket);  // ODataStore port: GCDWebServerPlatform.h
    if (result != 0) {
-     GWS_LOG_ERROR(@"Failed closing socket %i for connection: %s (%i)", _socket, strerror(errno), errno);
-@@ -398,14 +553,10 @@
+-    GWS_LOG_ERROR(@"Failed closing socket %i for connection: %s (%i)", _socket, strerror(errno), errno);
++    int code = GCDWebServerSocketLastError();
++    GWS_LOG_ERROR(@"Failed closing socket %i for connection: %@ (%i)", (int)_socket, GCDWebServerSocketErrorString(code), code);
+   } else {
+     GWS_LOG_DEBUG(@"Did close connection on socket %i", _socket);
+   }
+@@ -398,14 +552,10 @@
    }
  
    [_server didEndConnection:self];
@@ -1063,7 +1181,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerConnection.m GCDWebServer-ported/C
  }
  
  @end
-@@ -413,6 +564,7 @@
+@@ -413,6 +563,7 @@
  @implementation GCDWebServerConnection (Read)
  
  - (void)readData:(NSMutableData*)data withLength:(NSUInteger)length completionBlock:(ReadDataCompletionBlock)block {
@@ -1071,7 +1189,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerConnection.m GCDWebServer-ported/C
    dispatch_read(_socket, length, dispatch_get_global_queue(_server.dispatchQueuePriority, 0), ^(dispatch_data_t buffer, int error) {
      @autoreleasepool {
        if (error == 0) {
-@@ -426,7 +578,11 @@
+@@ -426,7 +577,11 @@
            [self didReadBytes:((char*)data.bytes + originalLength) length:(data.length - originalLength)];
            block(YES);
          } else {
@@ -1084,7 +1202,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerConnection.m GCDWebServer-ported/C
              GWS_LOG_ERROR(@"No more data available on socket %i", self->_socket);
            } else {
              GWS_LOG_WARNING(@"No data received from socket %i", self->_socket);
-@@ -441,28 +597,27 @@
+@@ -441,28 +596,27 @@
    });
  }
  
@@ -1126,7 +1244,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerConnection.m GCDWebServer-ported/C
            }
          } else {
            block(nil);
-@@ -471,6 +626,7 @@
+@@ -471,6 +625,7 @@
  }
  
  - (void)readBodyWithRemainingLength:(NSUInteger)length completionBlock:(ReadBodyCompletionBlock)block {
@@ -1134,7 +1252,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerConnection.m GCDWebServer-ported/C
    GWS_DCHECK([_request hasBody] && ![_request usesChunkedTransferEncoding]);
    NSMutableData* bodyData = [[NSMutableData alloc] initWithCapacity:kBodyReadCapacity];
    [self readData:bodyData
-@@ -511,16 +667,34 @@
+@@ -511,16 +666,34 @@
  }
  
  - (void)readNextBodyChunk:(NSMutableData*)chunkData completionBlock:(ReadBodyCompletionBlock)block {
@@ -1169,7 +1287,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerConnection.m GCDWebServer-ported/C
        if (length) {
          if (chunkData.length < range.location + range.length + length + 2) {
            break;
-@@ -529,6 +703,7 @@
+@@ -529,6 +702,7 @@
          if ((*ptr == '\r') && (*(ptr + 1) == '\n')) {
            NSError* error = nil;
            if ([_request performWriteData:[chunkData subdataWithRange:NSMakeRange(range.location + range.length, length)] error:&error]) {
@@ -1177,7 +1295,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerConnection.m GCDWebServer-ported/C
              [chunkData replaceBytesInRange:NSMakeRange(0, range.location + range.length + length + 2) withBytes:NULL length:0];
            } else {
              GWS_LOG_ERROR(@"Failed writing request body on socket %i: %@", _socket, error);
-@@ -546,6 +721,12 @@
+@@ -546,6 +720,12 @@
            block(YES);
            return;
          }
@@ -1190,7 +1308,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerConnection.m GCDWebServer-ported/C
        }
      } else {
        GWS_LOG_ERROR(@"Invalid chunk length reading request body on socket %i", _socket);
-@@ -570,6 +751,7 @@
+@@ -570,6 +750,7 @@
  @implementation GCDWebServerConnection (Write)
  
  - (void)writeData:(NSData*)data withCompletionBlock:(WriteDataCompletionBlock)block {
@@ -1198,7 +1316,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerConnection.m GCDWebServer-ported/C
    dispatch_data_t buffer = dispatch_data_create(data.bytes, data.length, dispatch_get_global_queue(_server.dispatchQueuePriority, 0), ^{
      [data self];  // Keeps ARC from releasing data too early
    });
-@@ -591,13 +773,13 @@
+@@ -591,13 +772,13 @@
  }
  
  - (void)writeHeadersWithCompletionBlock:(WriteHeadersCompletionBlock)block {
@@ -1215,7 +1333,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerConnection.m GCDWebServer-ported/C
    GWS_DCHECK([_response hasBody]);
    [_response performReadDataWithCompletion:^(NSData* data, NSError* error) {
      if (data) {
-@@ -722,7 +904,9 @@
+@@ -722,7 +903,9 @@
        response = [GCDWebServerResponse responseWithStatusCode:kGCDWebServerHTTPStatusCode_Unauthorized];
        [response setValue:[NSString stringWithFormat:@"Basic realm=\"%@\"", _server.authenticationRealm] forAdditionalHeader:@"WWW-Authenticate"];
      }
@@ -1226,7 +1344,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerConnection.m GCDWebServer-ported/C
      BOOL authenticated = NO;
      BOOL isStaled = NO;
      NSString* authorizationHeader = [request.headers objectForKey:@"Authorization"];
-@@ -750,10 +934,12 @@
+@@ -750,10 +933,12 @@
        [response setValue:[NSString stringWithFormat:@"Digest realm=\"%@\", nonce=\"%@\"%@", _server.authenticationRealm, _digestAuthenticationNonce, isStaled ? @", stale=TRUE" : @""] forAdditionalHeader:@"WWW-Authenticate"];  // TODO: Support Quality of Protection ("qop")
      }
    }
@@ -1239,7 +1357,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerConnection.m GCDWebServer-ported/C
    GWS_LOG_DEBUG(@"Connection on socket %i processing request \"%@ %@\" with %lu bytes body", _socket, _virtualHEAD ? @"HEAD" : _request.method, _request.path, (unsigned long)_totalBytesRead);
    _handler.asyncProcessBlock(request, [completion copy]);
  }
-@@ -793,9 +979,10 @@
+@@ -793,9 +978,10 @@
  - (void)abortRequest:(GCDWebServerRequest*)request withStatusCode:(NSInteger)statusCode {
    GWS_DCHECK(_responseMessage == NULL);
    GWS_DCHECK((statusCode >= 400) && (statusCode < 600));
@@ -1253,9 +1371,9 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerConnection.m GCDWebServer-ported/C
    GWS_LOG_DEBUG(@"Connection aborted with status code %i on socket %i", (int)statusCode, _socket);
  }
 diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerFunctions.m GCDWebServer-ported/Core/GCDWebServerFunctions.m
---- GCDWebServer-3.5.4/Core/GCDWebServerFunctions.m	2026-10-01 17:43:45
-+++ GCDWebServer-ported/Core/GCDWebServerFunctions.m	2026-10-01 17:43:45
-@@ -29,20 +29,28 @@
+--- GCDWebServer-3.5.4/Core/GCDWebServerFunctions.m	2026-10-14 18:58:29
++++ GCDWebServer-ported/Core/GCDWebServerFunctions.m	2026-10-14 18:58:29
+@@ -29,20 +29,19 @@
  #error GCDWebServer requires ARC
  #endif
  
@@ -1263,19 +1381,16 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerFunctions.m GCDWebServer-ported/Co
  #import <TargetConditionals.h>
  #if TARGET_OS_IPHONE
  #import <MobileCoreServices/MobileCoreServices.h>
- #else
- #import <SystemConfiguration/SystemConfiguration.h>
+-#else
+-#import <SystemConfiguration/SystemConfiguration.h>
  #endif
 -#import <CommonCrypto/CommonDigest.h>
 +#endif
  
- #import <ifaddrs.h>
- #import <net/if.h>
- #import <netdb.h>
-+#import <netinet/in.h>
-+#import <sys/socket.h>
-+#import <sys/types.h>
- 
+-#import <ifaddrs.h>
+-#import <net/if.h>
+-#import <netdb.h>
+-
  #import "GCDWebServerPrivate.h"
  
 +#if __GCDWEBSERVER_ENABLE_DIGEST_AUTH__
@@ -1285,7 +1400,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerFunctions.m GCDWebServer-ported/Co
  static NSDateFormatter* _dateFormatterRFC822 = nil;
  static NSDateFormatter* _dateFormatterISO8601 = nil;
  static dispatch_queue_t _dateFormatterQueue = NULL;
-@@ -112,11 +120,40 @@
+@@ -112,11 +111,40 @@
  
  // http://www.w3schools.com/tags/ref_charactersets.asp
  NSStringEncoding GCDWebServerStringEncodingFromCharset(NSString* charset) {
@@ -1326,7 +1441,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerFunctions.m GCDWebServer-ported/Co
  }
  
  NSString* GCDWebServerFormatRFC822(NSDate* date) {
-@@ -176,30 +213,145 @@
+@@ -176,30 +204,145 @@
        mimeType = [builtInOverrides objectForKey:extension];
      }
      if (mimeType == nil) {
@@ -1480,7 +1595,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerFunctions.m GCDWebServer-ported/Co
  NSDictionary<NSString*, NSString*>* GCDWebServerParseURLEncodedForm(NSString* form) {
    NSMutableDictionary* parameters = [NSMutableDictionary dictionary];
    NSScanner* scanner = [[NSScanner alloc] initWithString:form];
-@@ -239,7 +391,12 @@
+@@ -239,7 +382,12 @@
  NSString* GCDWebServerStringFromSockAddr(const struct sockaddr* addr, BOOL includeService) {
    char hostBuffer[NI_MAXHOST];
    char serviceBuffer[NI_MAXSERV];
@@ -1494,43 +1609,64 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerFunctions.m GCDWebServer-ported/Co
  #if DEBUG
      GWS_DNOT_REACHED();
  #else
-@@ -255,7 +412,7 @@
- #if !TARGET_IPHONE_SIMULATOR && !TARGET_OS_TV
-   const char* primaryInterface = "en0";  // WiFi interface on iOS
- #endif
--#else
-+#elif defined(__APPLE__)
-   const char* primaryInterface = NULL;
-   SCDynamicStoreRef store = SCDynamicStoreCreate(kCFAllocatorDefault, CFSTR("GCDWebServer"), NULL, NULL);
-   if (store) {
-@@ -272,7 +429,7 @@
-   if (primaryInterface == NULL) {
-     primaryInterface = "lo0";
-   }
--#endif
-+#endif  // ODataStore port: without SystemConfiguration, take the first interface that is up and not loopback
-   struct ifaddrs* list;
-   if (getifaddrs(&list) >= 0) {
-     for (struct ifaddrs* ifap = list; ifap; ifap = ifap->ifa_next) {
-@@ -280,6 +437,8 @@
-       // Assume en0 is Ethernet and en1 is WiFi since there is no way to use SystemConfiguration framework in iOS Simulator
-       // Assumption holds for Apple TV running tvOS
-       if (strcmp(ifap->ifa_name, "en0") && strcmp(ifap->ifa_name, "en1"))
-+#elif !defined(__APPLE__)
-+      if ((ifap->ifa_addr == NULL) || (ifap->ifa_flags & IFF_LOOPBACK))
- #else
-       if (strcmp(ifap->ifa_name, primaryInterface))
- #endif
-@@ -296,6 +455,8 @@
-   return address;
+@@ -249,53 +397,10 @@
+   return includeService ? [NSString stringWithFormat:@"%s:%s", hostBuffer, serviceBuffer] : (NSString*)[NSString stringWithUTF8String:hostBuffer];
  }
+ 
+-NSString* GCDWebServerGetPrimaryIPAddress(BOOL useIPv6) {
+-  NSString* address = nil;
+-#if TARGET_OS_IPHONE
+-#if !TARGET_IPHONE_SIMULATOR && !TARGET_OS_TV
+-  const char* primaryInterface = "en0";  // WiFi interface on iOS
+-#endif
+-#else
+-  const char* primaryInterface = NULL;
+-  SCDynamicStoreRef store = SCDynamicStoreCreate(kCFAllocatorDefault, CFSTR("GCDWebServer"), NULL, NULL);
+-  if (store) {
+-    CFPropertyListRef info = SCDynamicStoreCopyValue(store, CFSTR("State:/Network/Global/IPv4"));  // There is no equivalent for IPv6 but the primary interface should be the same
+-    if (info) {
+-      NSString* interface = [(__bridge NSDictionary*)info objectForKey:@"PrimaryInterface"];
+-      if (interface) {
+-        primaryInterface = [[NSString stringWithString:interface] UTF8String];  // Copy string to auto-release pool
+-      }
+-      CFRelease(info);
+-    }
+-    CFRelease(store);
+-  }
+-  if (primaryInterface == NULL) {
+-    primaryInterface = "lo0";
+-  }
+-#endif
+-  struct ifaddrs* list;
+-  if (getifaddrs(&list) >= 0) {
+-    for (struct ifaddrs* ifap = list; ifap; ifap = ifap->ifa_next) {
+-#if TARGET_IPHONE_SIMULATOR || TARGET_OS_TV
+-      // Assume en0 is Ethernet and en1 is WiFi since there is no way to use SystemConfiguration framework in iOS Simulator
+-      // Assumption holds for Apple TV running tvOS
+-      if (strcmp(ifap->ifa_name, "en0") && strcmp(ifap->ifa_name, "en1"))
+-#else
+-      if (strcmp(ifap->ifa_name, primaryInterface))
+-#endif
+-      {
+-        continue;
+-      }
+-      if ((ifap->ifa_flags & IFF_UP) && ((!useIPv6 && (ifap->ifa_addr->sa_family == AF_INET)) || (useIPv6 && (ifap->ifa_addr->sa_family == AF_INET6)))) {
+-        address = GCDWebServerStringFromSockAddr(ifap->ifa_addr, NO);
+-        break;
+-      }
+-    }
+-    freeifaddrs(list);
+-  }
+-  return address;
+-}
++// ODataStore port: GCDWebServerGetPrimaryIPAddress() is in GCDWebServerPlatform.m, POSIX's and Windows'.
  
 +#if __GCDWEBSERVER_ENABLE_DIGEST_AUTH__
 +
  NSString* GCDWebServerComputeMD5Digest(NSString* format, ...) {
    va_list arguments;
    va_start(arguments, format);
-@@ -317,6 +478,8 @@
+@@ -317,6 +422,8 @@
    buffer[2 * CC_MD5_DIGEST_LENGTH] = 0;
    return (NSString*)[NSString stringWithUTF8String:buffer];
  }
@@ -1541,7 +1677,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerFunctions.m GCDWebServer-ported/Co
    NSMutableArray* components = [[NSMutableArray alloc] init];
 diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerHTTPMessage.h GCDWebServer-ported/Core/GCDWebServerHTTPMessage.h
 --- GCDWebServer-3.5.4/Core/GCDWebServerHTTPMessage.h	1970-01-01 06:00:00
-+++ GCDWebServer-ported/Core/GCDWebServerHTTPMessage.h	2026-10-01 17:43:45
++++ GCDWebServer-ported/Core/GCDWebServerHTTPMessage.h	2026-10-14 18:58:29
 @@ -0,0 +1,122 @@
 +/*
 + GCDWebServerHTTPMessage: a replacement for the parts of CFHTTPMessage that
@@ -1667,7 +1803,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerHTTPMessage.h GCDWebServer-ported/
 +NS_ASSUME_NONNULL_END
 diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerHTTPMessage.m GCDWebServer-ported/Core/GCDWebServerHTTPMessage.m
 --- GCDWebServer-3.5.4/Core/GCDWebServerHTTPMessage.m	1970-01-01 06:00:00
-+++ GCDWebServer-ported/Core/GCDWebServerHTTPMessage.m	2026-10-01 17:43:45
++++ GCDWebServer-ported/Core/GCDWebServerHTTPMessage.m	2026-10-14 18:58:29
 @@ -0,0 +1,554 @@
 +/*
 + GCDWebServerHTTPMessage: a replacement for the parts of CFHTTPMessage that
@@ -2223,10 +2359,63 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerHTTPMessage.m GCDWebServer-ported/
 +}
 +
 +@end
+diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerPlatform.h GCDWebServer-ported/Core/GCDWebServerPlatform.h
+--- GCDWebServer-3.5.4/Core/GCDWebServerPlatform.h	1970-01-01 06:00:00
++++ GCDWebServer-ported/Core/GCDWebServerPlatform.h	2026-10-14 18:58:29
+@@ -0,0 +1,38 @@
++/*
++ ODataStore port: what differs between POSIX (Linux, macOS, iOS) and Windows,
++ behind one set of names. GCDWebServerPlatformTypes.h, from
++ GCDWebServer/Platform/POSIX or GCDWebServer/Platform/Windows (the build's
++ include path chooses), brings the system's socket and file headers and
++ GCDWebServerSocketHandle; GCDWebServerPlatform.m beside it implements these.
++ Socket errors are POSIX errno values on both: Windows' are translated.
++ */
++
++#import <Foundation/Foundation.h>
++
++#import "GCDWebServerPlatformTypes.h"
++
++NS_ASSUME_NONNULL_BEGIN
++
++/* Sockets: Winsock started once, before the first one (nothing elsewhere). */
++void GCDWebServerSocketsStart(void);
++BOOL GCDWebServerSocketIsValid(GCDWebServerSocketHandle socket);
++int GCDWebServerSocketClose(GCDWebServerSocketHandle socket);
++/* The last socket call's error, as an errno value. */
++int GCDWebServerSocketLastError(void);
++NSString* GCDWebServerSocketErrorString(int error);
++/* Makes a pending read on the socket complete with end-of-file. */
++void GCDWebServerSocketShutdownRead(GCDWebServerSocketHandle socket);
++void GCDWebServerSocketSetReceiveTimeout(GCDWebServerSocketHandle socket, int seconds);
++/* A write to a socket the peer has closed must not kill the process:
++   SO_NOSIGPIPE on the socket where there is one, else SIGPIPE ignored
++   process-wide unless the application handles it (Windows has none). */
++void GCDWebServerSocketNoBrokenPipeSignal(GCDWebServerSocketHandle socket);
++void GCDWebServerIgnoreBrokenPipe(void);
++
++/* Files, in binary mode: created read-write for the user. */
++int GCDWebServerOpenFile(NSString* path, int flags);
++/* A regular file's size, modification date and ETag, its symbolic link not
++   followed; NO for anything else. */
++BOOL GCDWebServerRegularFileInfo(NSString* path, unsigned long long* size, NSDate* _Nullable* _Nonnull modified, NSString* _Nullable* _Nonnull eTag);
++
++NS_ASSUME_NONNULL_END
 diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerPrivate.h GCDWebServer-ported/Core/GCDWebServerPrivate.h
---- GCDWebServer-3.5.4/Core/GCDWebServerPrivate.h	2026-10-01 17:43:45
-+++ GCDWebServer-ported/Core/GCDWebServerPrivate.h	2026-10-01 17:43:45
-@@ -48,7 +48,25 @@
+--- GCDWebServer-3.5.4/Core/GCDWebServerPrivate.h	2026-10-14 18:58:29
++++ GCDWebServer-ported/Core/GCDWebServerPrivate.h	2026-10-14 18:58:29
+@@ -26,8 +26,9 @@
+  */
+ 
+ #import <os/object.h>
+-#import <sys/socket.h>
+ 
++#import "GCDWebServerPlatform.h"  // ODataStore port: sockets and files, POSIX's or Windows'
++
+ /**
+  *  All GCDWebServer headers.
+  */
+@@ -48,7 +49,24 @@
  #import "GCDWebServerFileResponse.h"
  #import "GCDWebServerStreamedResponse.h"
  
@@ -2243,10 +2432,9 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerPrivate.h GCDWebServer-ported/Core
 +#define __GCDWEBSERVER_ENABLE_DIGEST_AUTH__ 0
 +
 +/**
-+ *  ODataStore port: CFSocketNativeHandle is a CoreFoundation type.
++ *  ODataStore port: CFSocketNativeHandle is a CoreFoundation type;
++ *  GCDWebServerSocketHandle comes from GCDWebServerPlatform.h (a SOCKET on Windows).
 + */
-+
-+typedef int GCDWebServerSocketHandle;
 +
 +/**
   *  Check if a custom logging facility should be used instead.
@@ -2282,8 +2470,8 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerPrivate.h GCDWebServer-ported/Core
  - (void)didEndConnection:(GCDWebServerConnection*)connection;
  @end
 diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerResponse.m GCDWebServer-ported/Core/GCDWebServerResponse.m
---- GCDWebServer-3.5.4/Core/GCDWebServerResponse.m	2026-10-01 17:43:45
-+++ GCDWebServer-ported/Core/GCDWebServerResponse.m	2026-10-01 17:43:45
+--- GCDWebServer-3.5.4/Core/GCDWebServerResponse.m	2026-10-14 18:58:29
++++ GCDWebServer-ported/Core/GCDWebServerResponse.m	2026-10-14 18:58:29
 @@ -215,6 +215,7 @@
  }
  
@@ -2292,26 +2480,94 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerResponse.m GCDWebServer-ported/Cor
    GWS_DCHECK(_opened);
    if ([_reader respondsToSelector:@selector(asyncReadDataWithCompletion:)]) {
      [_reader asyncReadDataWithCompletion:[block copy]];
+diff -ruN GCDWebServer-3.5.4/Requests/GCDWebServerFileRequest.m GCDWebServer-ported/Requests/GCDWebServerFileRequest.m
+--- GCDWebServer-3.5.4/Requests/GCDWebServerFileRequest.m	2026-10-14 18:58:29
++++ GCDWebServer-ported/Requests/GCDWebServerFileRequest.m	2026-10-14 18:58:29
+@@ -47,7 +47,7 @@
+ }
+ 
+ - (BOOL)open:(NSError**)error {
+-  _file = open([_temporaryPath fileSystemRepresentation], O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
++  _file = GCDWebServerOpenFile(_temporaryPath, O_CREAT | O_TRUNC | O_WRONLY);  // ODataStore port: binary on Windows
+   if (_file <= 0) {
+     if (error) {
+       *error = GCDWebServerMakePosixError(errno);
+diff -ruN GCDWebServer-3.5.4/Requests/GCDWebServerMultiPartFormRequest.m GCDWebServer-ported/Requests/GCDWebServerMultiPartFormRequest.m
+--- GCDWebServer-3.5.4/Requests/GCDWebServerMultiPartFormRequest.m	2026-10-14 18:58:29
++++ GCDWebServer-ported/Requests/GCDWebServerMultiPartFormRequest.m	2026-10-14 18:58:29
+@@ -208,7 +208,7 @@
+           }
+         } else if (_fileName) {
+           NSString* path = [NSTemporaryDirectory() stringByAppendingPathComponent:[[NSProcessInfo processInfo] globallyUniqueString]];
+-          _tmpFile = open([path fileSystemRepresentation], O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
++          _tmpFile = GCDWebServerOpenFile(path, O_CREAT | O_TRUNC | O_WRONLY);  // ODataStore port: binary on Windows
+           if (_tmpFile > 0) {
+             _tmpPath = [path copy];
+           } else {
 diff -ruN GCDWebServer-3.5.4/Responses/GCDWebServerFileResponse.m GCDWebServer-ported/Responses/GCDWebServerFileResponse.m
---- GCDWebServer-3.5.4/Responses/GCDWebServerFileResponse.m	2026-10-01 17:43:45
-+++ GCDWebServer-ported/Responses/GCDWebServerFileResponse.m	2026-10-01 17:43:45
-@@ -131,8 +131,13 @@
+--- GCDWebServer-3.5.4/Responses/GCDWebServerFileResponse.m	2026-10-14 18:58:29
++++ GCDWebServer-ported/Responses/GCDWebServerFileResponse.m	2026-10-14 18:58:29
+@@ -29,8 +29,6 @@
+ #error GCDWebServer requires ARC
+ #endif
+ 
+-#import <sys/stat.h>
+-
+ #import "GCDWebServerPrivate.h"
+ 
+ #define kFileReadBufferSize (32 * 1024)
+@@ -72,23 +70,23 @@
+   return [self initWithFile:path byteRange:range isAttachment:NO mimeTypeOverrides:nil];
+ }
+ 
+-static inline NSDate* _NSDateFromTimeSpec(const struct timespec* t) {
+-  return [NSDate dateWithTimeIntervalSince1970:((NSTimeInterval)t->tv_sec + (NSTimeInterval)t->tv_nsec / 1000000000.0)];
+-}
+ 
+ - (instancetype)initWithFile:(NSString*)path byteRange:(NSRange)range isAttachment:(BOOL)attachment mimeTypeOverrides:(NSDictionary<NSString*, NSString*>*)overrides {
+-  struct stat info;
+-  if (lstat([path fileSystemRepresentation], &info) || !(info.st_mode & S_IFREG)) {
++  // ODataStore port: GCDWebServerPlatform.h (lstat() and st_mtim on POSIX, the file's attributes on Windows)
++  unsigned long long infoSize = 0;
++  NSDate* lastModified = nil;
++  NSString* eTag = nil;
++  if (!GCDWebServerRegularFileInfo(path, &infoSize, &lastModified, &eTag)) {
+     GWS_DNOT_REACHED();
+     return nil;
+   }
+ #ifndef __LP64__
+-  if (info.st_size >= (off_t)4294967295) {  // In 32 bit mode, we can't handle files greater than 4 GiBs (don't use "NSUIntegerMax" here to avoid potential unsigned to signed conversion issues)
++  if (infoSize >= 4294967295ULL) {  // In 32 bit mode, we can't handle files greater than 4 GiBs (don't use "NSUIntegerMax" here to avoid potential unsigned to signed conversion issues)
+     GWS_DNOT_REACHED();
+     return nil;
+   }
+ #endif
+-  NSUInteger fileSize = (NSUInteger)info.st_size;
++  NSUInteger fileSize = (NSUInteger)infoSize;
+ 
+   BOOL hasByteRange = GCDWebServerIsValidByteRange(range);
+   if (hasByteRange) {
+@@ -131,14 +129,14 @@
  
      self.contentType = GCDWebServerGetMimeTypeForExtension([_path pathExtension], overrides);
      self.contentLength = _size;
-+#if defined(__APPLE__)
-     self.lastModifiedDate = _NSDateFromTimeSpec(&info.st_mtimespec);
-     self.eTag = [NSString stringWithFormat:@"%llu/%li/%li", info.st_ino, info.st_mtimespec.tv_sec, info.st_mtimespec.tv_nsec];
-+#else
-+    self.lastModifiedDate = _NSDateFromTimeSpec(&info.st_mtim);  // ODataStore port: POSIX name
-+    self.eTag = [NSString stringWithFormat:@"%llu/%li/%li", (unsigned long long)info.st_ino, (long)info.st_mtim.tv_sec, (long)info.st_mtim.tv_nsec];
-+#endif
+-    self.lastModifiedDate = _NSDateFromTimeSpec(&info.st_mtimespec);
+-    self.eTag = [NSString stringWithFormat:@"%llu/%li/%li", info.st_ino, info.st_mtimespec.tv_sec, info.st_mtimespec.tv_nsec];
++    self.lastModifiedDate = lastModified;
++    self.eTag = eTag;
    }
    return self;
  }
+ 
+ - (BOOL)open:(NSError**)error {
+-  _file = open([_path fileSystemRepresentation], O_NOFOLLOW | O_RDONLY);
++  _file = GCDWebServerOpenFile(_path, kGCDWebServerOpenNoFollow | O_RDONLY);  // ODataStore port: binary on Windows
+   if (_file <= 0) {
+     if (error) {
+       *error = GCDWebServerMakePosixError(errno);
 diff -ruN GCDWebServer-3.5.4/Responses/GCDWebServerStreamedResponse.m GCDWebServer-ported/Responses/GCDWebServerStreamedResponse.m
---- GCDWebServer-3.5.4/Responses/GCDWebServerStreamedResponse.m	2026-10-01 17:43:45
-+++ GCDWebServer-ported/Responses/GCDWebServerStreamedResponse.m	2026-10-01 17:43:45
+--- GCDWebServer-3.5.4/Responses/GCDWebServerStreamedResponse.m	2026-10-14 18:58:29
++++ GCDWebServer-ported/Responses/GCDWebServerStreamedResponse.m	2026-10-14 18:58:29
 @@ -38,14 +38,17 @@
  @dynamic contentType;
  

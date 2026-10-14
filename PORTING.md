@@ -11,7 +11,8 @@ are built. GCDWebDAVServer, GCDWebUploader, the apps, upstream's tests and its
 Xcode project are left as upstream has them, unbuilt.
 
 The port builds with ARC on macOS (Apple Foundation) and on GNUstep on Linux
-(clang, libobjc2 with the gnustep-2.0 runtime, gnustep-base, libdispatch).
+and Windows (clang, libobjc2 with the gnustep-2.0 runtime, gnustep-base,
+libdispatch; on Windows in MSYS2's CLANG64).
 
 ## Files
 
@@ -19,6 +20,12 @@ The port builds with ARC on macOS (Apple Foundation) and on GNUstep on Linux
   changes below.
 - `GCDWebServer/Core/GCDWebServerHTTPMessage.{h,m}`: new, replaces
   CFHTTPMessage (private).
+- `GCDWebServer/Core/GCDWebServerPlatform.h` and
+  `GCDWebServer/Platform/{POSIX,Windows}/`: new, what differs between POSIX
+  and Windows (sockets, files) behind one set of names. The build's include
+  path and source list choose the platform's `GCDWebServerPlatformTypes.h` and
+  `GCDWebServerPlatform.m` (`GNUmakefile` by target OS, `Makefile.apple`
+  POSIX), so the shared sources carry no `#if` for it.
 - `upstream.diff`: `diff -ruN` of the three directories, upstream against
   ported.
 - `GNUmakefile` (GNUstep) and `Makefile.apple` (macOS, iOS): the library,
@@ -27,8 +34,8 @@ The port builds with ARC on macOS (Apple Foundation) and on GNUstep on Linux
   installs `libGCDWebServer` and its headers in `GCDWebServer/`; on Apple,
   `GCDWebServer.xcframework` (a static library for macOS, iOS and the
   simulator, the headers in `GCDWebServer/`).
-- `Tests/GNUstep/gws-smoke.m`: smoke test over plain BSD sockets
-  (`make check`).
+- `Tests/GNUstep/gws-smoke.m`: smoke test over plain sockets, through
+  `GCDWebServerPlatform.h` (`make check`).
 - `Tests/GNUstep/gws-cfcompare.m`: macOS only; compares the CFHTTPMessage
   replacement with CFNetwork (`make -f Makefile.apple check` runs it too).
 
@@ -81,21 +88,34 @@ Platform:
 - `TargetConditionals.h` only on Apple; elsewhere `TARGET_OS_IPHONE`,
   `TARGET_IPHONE_SIMULATOR` and `TARGET_OS_TV` are defined to 0.
 - `CFUUID` → `NSUUID` (only in the compiled-out digest nonce).
-- `CFSocketNativeHandle` → `GCDWebServerSocketHandle` (`int`).
+- `CFSocketNativeHandle` → `GCDWebServerSocketHandle` (`int`; a `SOCKET` on
+  Windows), valid when `GCDWebServerSocketIsValid()` says so, closed with
+  `GCDWebServerSocketClose()`; socket errors from
+  `GCDWebServerSocketLastError()`, errno values on both platforms (Winsock's
+  are translated), so `NSPOSIXErrorDomain` errors and the no-IPv6 fallback
+  mean the same.
 - `sin_len`, `sin6_len`, `sa_len` only on Apple; elsewhere the length comes
   from the address family.
 - `st_mtimespec` → `st_mtim` off Apple (File response Last-Modified and ETag).
 - `SO_NOSIGPIPE` where it exists. Elsewhere `-startWithOptions:error:`
   sets SIGPIPE to SIG_IGN if it is still SIG_DFL: libdispatch does the writes,
   so `MSG_NOSIGNAL` is not an option. A handler the application installed is
-  left alone.
+  left alone. Windows has no SIGPIPE.
+- Windows: Winsock is started once before the first socket; files (request
+  and response bodies) are opened in binary mode with UTF-16 paths, since a
+  text-mode file has its line ends rewritten; a file response's size,
+  Last-Modified and ETag come from the file's attributes (no inode: size and
+  modification time), and a reparse point (symbolic link, junction) is not
+  served, as `lstat()` and `O_NOFOLLOW` refuse a link elsewhere. libdispatch
+  reads and writes the sockets itself (`recv`/`send` on Windows).
 - MIME types: UTType on Apple (deprecation warning silenced); elsewhere a small
   table (json, xml, txt, html, css, js, csv, png, jpg, gif, svg, ico, pdf, zip),
   `application/octet-stream` otherwise.
 - Charset names: CFStringConvertIANACharSetNameToEncoding on Apple; elsewhere a
   table of the common IANA names, UTF-8 otherwise.
 - Primary IP address (`serverURL` when not bound to localhost): SystemConfiguration
-  on Apple; elsewhere the first interface that is up and not loopback.
+  on Apple; elsewhere the first interface that is up and not loopback
+  (`GetAdaptersAddresses()` on Windows).
 - The disconnect-coalescing timer is a dispatch source on the main queue
   instead of a CFRunLoopTimer (all platforms).
 - `-runWithOptions:` and its helper use NSRunLoop instead of CFRunLoop off Apple.

@@ -2,22 +2,18 @@
  gws-smoke: smoke test for the ported GCDWebServer.
 
  Starts a GCDWebServer on 127.0.0.1 with an automatic port, then talks to it
- over plain BSD sockets (no NSURLSession, so no dependency on libcurl) and
- checks the responses. Prints one line per check; exits 0 only if all pass.
+ over plain sockets (no NSURLSession, so no dependency on libcurl) and checks
+ the responses. Prints one line per check; exits 0 only if all pass. Sockets
+ through GCDWebServerPlatform.h: BSD sockets on POSIX, Winsock on Windows.
 
  Build: see GNUmakefile in the parent directory.
  */
 
 #import <Foundation/Foundation.h>
 
-#import <arpa/inet.h>
-#import <errno.h>
-#import <netinet/in.h>
-#import <signal.h>
 #import <string.h>
-#import <sys/socket.h>
-#import <sys/time.h>
-#import <unistd.h>
+
+#import "GCDWebServerPlatform.h"
 
 #import <stdatomic.h>
 
@@ -63,30 +59,27 @@ static void Check(BOOL ok, NSString* name, NSString* detail) {
 }
 @end
 
-static int Connect(NSUInteger port) {
-  int fd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
-  if (fd < 0) {
-    return -1;
+static GCDWebServerSocketHandle Connect(NSUInteger port) {
+  GCDWebServerSocketsStart();
+  GCDWebServerSocketHandle fd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
+  if (!GCDWebServerSocketIsValid(fd)) {
+    return kGCDWebServerInvalidSocket;
   }
-#ifdef SO_NOSIGPIPE
-  int yes = 1;
-  setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &yes, sizeof(yes));
-#endif
-  struct timeval timeout = {10, 0};
-  setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+  GCDWebServerSocketNoBrokenPipeSignal(fd);
+  GCDWebServerSocketSetReceiveTimeout(fd, 10);
   struct sockaddr_in addr;
   memset(&addr, 0, sizeof(addr));
   addr.sin_family = AF_INET;
   addr.sin_port = htons((uint16_t)port);
   addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
   if (connect(fd, (struct sockaddr*)&addr, sizeof(addr)) != 0) {
-    close(fd);
-    return -1;
+    GCDWebServerSocketClose(fd);
+    return kGCDWebServerInvalidSocket;
   }
   return fd;
 }
 
-static BOOL SendAll(int fd, NSData* data) {
+static BOOL SendAll(GCDWebServerSocketHandle fd, NSData* data) {
 #ifdef MSG_NOSIGNAL
   int flags = MSG_NOSIGNAL;
 #else
@@ -95,9 +88,9 @@ static BOOL SendAll(int fd, NSData* data) {
   const char* bytes = data.bytes;
   NSUInteger sent = 0;
   while (sent < data.length) {
-    ssize_t n = send(fd, bytes + sent, data.length - sent, flags);
+    long n = send(fd, bytes + sent, (int)(data.length - sent), flags);
     if (n <= 0) {
-      if ((n < 0) && (errno == EINTR)) {
+      if ((n < 0) && (GCDWebServerSocketLastError() == EINTR)) {
         continue;
       }
       return NO;
@@ -175,35 +168,38 @@ static Response* ParseResponse(NSData* raw, NSString* error) {
 }
 
 // Reads until the server closes the connection (it always sends Connection: close)
-static NSData* ReadAll(int fd, NSString** error) {
+static NSData* ReadAll(GCDWebServerSocketHandle fd, NSString** error) {
   NSMutableData* data = [NSMutableData data];
   char buffer[16384];
   while (1) {
-    ssize_t n = recv(fd, buffer, sizeof(buffer), 0);
+    long n = recv(fd, buffer, (int)sizeof(buffer), 0);
     if (n > 0) {
       [data appendBytes:buffer length:(NSUInteger)n];
     } else if (n == 0) {
       break;
-    } else if (errno != EINTR) {
-      *error = [NSString stringWithUTF8String:strerror(errno)];
-      break;
+    } else {
+      int code = GCDWebServerSocketLastError();
+      if (code != EINTR) {
+        *error = GCDWebServerSocketErrorString(code);
+        break;
+      }
     }
   }
   return data;
 }
 
 static Response* Exchange(NSUInteger port, NSData* request) {
-  int fd = Connect(port);
-  if (fd < 0) {
+  GCDWebServerSocketHandle fd = Connect(port);
+  if (!GCDWebServerSocketIsValid(fd)) {
     return ParseResponse([NSData data], @"connect failed");
   }
   NSString* error = nil;
   if (!SendAll(fd, request)) {
-    error = [NSString stringWithFormat:@"send: %s", strerror(errno)];
+    error = [NSString stringWithFormat:@"send: %@", GCDWebServerSocketErrorString(GCDWebServerSocketLastError())];
   }
   NSString* readError = nil;
   NSData* raw = ReadAll(fd, &readError);
-  close(fd);
+  GCDWebServerSocketClose(fd);
   return ParseResponse(raw, readError ? readError : error);
 }
 
@@ -344,10 +340,10 @@ int main(int argc, const char* argv[]) {
 
     // 4. Expect: 100-continue: the body is only sent after the interim response
     {
-      int fd = Connect(port);
+      GCDWebServerSocketHandle fd = Connect(port);
       NSString* interim = nil;
       Response* r = nil;
-      if (fd >= 0) {
+      if (GCDWebServerSocketIsValid(fd)) {
         SendAll(fd, Utf8(@"PUT /svc/Products(1) HTTP/1.1\r\nHost: localhost\r\nContent-Type: text/plain\r\nContent-Length: 4\r\nExpect: 100-continue\r\n\r\n"));
         NSMutableData* head = [NSMutableData data];
         char c;
@@ -358,7 +354,7 @@ int main(int argc, const char* argv[]) {
         SendAll(fd, Utf8(@"ping"));
         NSString* error = nil;
         NSData* raw = ReadAll(fd, &error);
-        close(fd);
+        GCDWebServerSocketClose(fd);
         r = ParseResponse(raw, error);
       }
       NSDictionary* json = [r json];

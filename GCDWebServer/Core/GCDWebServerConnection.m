@@ -32,8 +32,6 @@
 #if defined(__APPLE__)
 #import <TargetConditionals.h>
 #endif
-#import <netdb.h>
-#import <sys/socket.h>
 #ifdef __GCDWEBSERVER_ENABLE_TESTING__
 #import <libkern/OSAtomic.h>
 #endif
@@ -168,7 +166,7 @@ NS_ASSUME_NONNULL_END
         GWS_LOG_WARNING(@"Timed out reading request on socket %i", strongSelf->_socket);
       }
       strongSelf->_abortStatusCode = kGCDWebServerHTTPStatusCode_RequestTimeout;
-      shutdown(strongSelf->_socket, SHUT_RD);  // Makes the pending read complete with end-of-file
+      GCDWebServerSocketShutdownRead(strongSelf->_socket);  // Makes the pending read complete with end-of-file
     }
   });
   dispatch_resume(_readTimer);
@@ -513,7 +511,7 @@ NS_ASSUME_NONNULL_END
     [_server willStartConnection:self];
 
     if (![self open]) {
-      close(_socket);
+      GCDWebServerSocketClose(_socket);  // ODataStore port: GCDWebServerPlatform.h
       return nil;
     }
     _opened = YES;
@@ -541,9 +539,10 @@ NS_ASSUME_NONNULL_END
   _finished = YES;
   [self _cancelReadTimer];
 
-  int result = close(_socket);
+  int result = GCDWebServerSocketClose(_socket);  // ODataStore port: GCDWebServerPlatform.h
   if (result != 0) {
-    GWS_LOG_ERROR(@"Failed closing socket %i for connection: %s (%i)", _socket, strerror(errno), errno);
+    int code = GCDWebServerSocketLastError();
+    GWS_LOG_ERROR(@"Failed closing socket %i for connection: %@ (%i)", (int)_socket, GCDWebServerSocketErrorString(code), code);
   } else {
     GWS_LOG_DEBUG(@"Did close connection on socket %i", _socket);
   }
