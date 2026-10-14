@@ -26,8 +26,6 @@ libdispatch; on Windows in MSYS2's CLANG64).
   path and source list choose the platform's `GCDWebServerPlatformTypes.h` and
   `GCDWebServerPlatform.m` (`GNUmakefile` by target OS, `Makefile.apple`
   POSIX), so the shared sources carry no `#if` for it.
-- `upstream.diff`: `diff -ruN` of the three directories, upstream against
-  ported.
 - `GNUmakefile` (GNUstep) and `Makefile.apple` (macOS, iOS): the library,
   built, tested and installed the way gnustep-release-actions runs every
   repository: `make`, `make check`, `make install DESTDIR=...`. On GNUstep it
@@ -39,12 +37,12 @@ libdispatch; on Windows in MSYS2's CLANG64).
 - `Tests/GNUstep/gws-cfcompare.m`: macOS only; compares the CFHTTPMessage
   replacement with CFNetwork (`make -f Makefile.apple check` runs it too).
 
-## Updating to a new upstream release
+## What the port changed
 
-1. Copy the new release's `GCDWebServer/Core`, `Requests` and `Responses` over these.
-2. `patch -p1 < upstream.diff` from `GCDWebServer/`, and fix the rejects.
-3. Regenerate `upstream.diff` against the new pristine release, and run
-   `make check` on GNUstep and `make -f Makefile.apple check` on macOS.
+Upstream is archived, so there are no releases to take. This branch starts
+from upstream's `3.5.4` (`1c36bf07`), so its history is the port:
+
+    git diff 1c36bf07 -- GCDWebServer/Core GCDWebServer/Requests GCDWebServer/Responses
 
 Changes are marked `ODataStore port` in comments, or sit in the guards named below.
 
