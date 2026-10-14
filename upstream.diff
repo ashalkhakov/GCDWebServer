@@ -1,6 +1,6 @@
 diff -ruN GCDWebServer-3.5.4/Core/GCDWebServer.h GCDWebServer-ported/Core/GCDWebServer.h
 --- GCDWebServer-3.5.4/Core/GCDWebServer.h	2026-10-14 18:58:29
-+++ GCDWebServer-ported/Core/GCDWebServer.h	2026-10-14 18:58:29
++++ GCDWebServer-ported/Core/GCDWebServer.h	2026-10-14 19:03:05
 @@ -25,7 +25,20 @@
   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
   */
@@ -118,7 +118,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServer.h GCDWebServer-ported/Core/GCDWeb
  
 diff -ruN GCDWebServer-3.5.4/Core/GCDWebServer.m GCDWebServer-ported/Core/GCDWebServer.m
 --- GCDWebServer-3.5.4/Core/GCDWebServer.m	2026-10-14 18:58:29
-+++ GCDWebServer-ported/Core/GCDWebServer.m	2026-10-14 18:58:29
++++ GCDWebServer-ported/Core/GCDWebServer.m	2026-10-14 19:03:05
 @@ -29,7 +29,9 @@
  #error GCDWebServer requires ARC
  #endif
@@ -744,7 +744,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServer.m GCDWebServer-ported/Core/GCDWeb
      [self
 diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerConnection.m GCDWebServer-ported/Core/GCDWebServerConnection.m
 --- GCDWebServer-3.5.4/Core/GCDWebServerConnection.m	2026-10-14 18:58:29
-+++ GCDWebServer-ported/Core/GCDWebServerConnection.m	2026-10-14 18:58:29
++++ GCDWebServer-ported/Core/GCDWebServerConnection.m	2026-10-14 19:03:05
 @@ -29,8 +29,9 @@
  #error GCDWebServer requires ARC
  #endif
@@ -1252,6 +1252,15 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerConnection.m GCDWebServer-ported/C
    GWS_DCHECK([_request hasBody] && ![_request usesChunkedTransferEncoding]);
    NSMutableData* bodyData = [[NSMutableData alloc] initWithCapacity:kBodyReadCapacity];
    [self readData:bodyData
+@@ -503,7 +658,7 @@
+ 
+ static inline NSUInteger _ScanHexNumber(const void* bytes, NSUInteger size) {
+   char buffer[size + 1];
+-  bcopy(bytes, buffer, size);
++  memmove(buffer, bytes, size);  // ODataStore port: bcopy() is BSD's, not Windows'
+   buffer[size] = 0;
+   char* end = NULL;
+   long result = strtol(buffer, &end, 16);
 @@ -511,16 +666,34 @@
  }
  
@@ -1333,6 +1342,20 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerConnection.m GCDWebServer-ported/C
    GWS_DCHECK([_response hasBody]);
    [_response performReadDataWithCompletion:^(NSData* data, NSError* error) {
      if (data) {
+@@ -612,11 +793,11 @@
+             return;
+           }
+           char* ptr = (char*)[(NSMutableData*)chunk mutableBytes];
+-          bcopy(hexString, ptr, hexLength);
++          memmove(ptr, hexString, hexLength);  // ODataStore port: bcopy() is BSD's
+           ptr += hexLength;
+           *ptr++ = '\r';
+           *ptr++ = '\n';
+-          bcopy(data.bytes, ptr, data.length);
++          memmove(ptr, data.bytes, data.length);  // ODataStore port: bcopy() is BSD's
+           ptr += data.length;
+           *ptr++ = '\r';
+           *ptr = '\n';
 @@ -722,7 +903,9 @@
        response = [GCDWebServerResponse responseWithStatusCode:kGCDWebServerHTTPStatusCode_Unauthorized];
        [response setValue:[NSString stringWithFormat:@"Basic realm=\"%@\"", _server.authenticationRealm] forAdditionalHeader:@"WWW-Authenticate"];
@@ -1372,7 +1395,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerConnection.m GCDWebServer-ported/C
  }
 diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerFunctions.m GCDWebServer-ported/Core/GCDWebServerFunctions.m
 --- GCDWebServer-3.5.4/Core/GCDWebServerFunctions.m	2026-10-14 18:58:29
-+++ GCDWebServer-ported/Core/GCDWebServerFunctions.m	2026-10-14 18:58:29
++++ GCDWebServer-ported/Core/GCDWebServerFunctions.m	2026-10-14 19:03:05
 @@ -29,20 +29,19 @@
  #error GCDWebServer requires ARC
  #endif
@@ -1677,7 +1700,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerFunctions.m GCDWebServer-ported/Co
    NSMutableArray* components = [[NSMutableArray alloc] init];
 diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerHTTPMessage.h GCDWebServer-ported/Core/GCDWebServerHTTPMessage.h
 --- GCDWebServer-3.5.4/Core/GCDWebServerHTTPMessage.h	1970-01-01 06:00:00
-+++ GCDWebServer-ported/Core/GCDWebServerHTTPMessage.h	2026-10-14 18:58:29
++++ GCDWebServer-ported/Core/GCDWebServerHTTPMessage.h	2026-10-14 19:03:05
 @@ -0,0 +1,122 @@
 +/*
 + GCDWebServerHTTPMessage: a replacement for the parts of CFHTTPMessage that
@@ -1803,7 +1826,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerHTTPMessage.h GCDWebServer-ported/
 +NS_ASSUME_NONNULL_END
 diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerHTTPMessage.m GCDWebServer-ported/Core/GCDWebServerHTTPMessage.m
 --- GCDWebServer-3.5.4/Core/GCDWebServerHTTPMessage.m	1970-01-01 06:00:00
-+++ GCDWebServer-ported/Core/GCDWebServerHTTPMessage.m	2026-10-14 18:58:29
++++ GCDWebServer-ported/Core/GCDWebServerHTTPMessage.m	2026-10-14 19:03:05
 @@ -0,0 +1,554 @@
 +/*
 + GCDWebServerHTTPMessage: a replacement for the parts of CFHTTPMessage that
@@ -2361,7 +2384,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerHTTPMessage.m GCDWebServer-ported/
 +@end
 diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerPlatform.h GCDWebServer-ported/Core/GCDWebServerPlatform.h
 --- GCDWebServer-3.5.4/Core/GCDWebServerPlatform.h	1970-01-01 06:00:00
-+++ GCDWebServer-ported/Core/GCDWebServerPlatform.h	2026-10-14 18:58:29
++++ GCDWebServer-ported/Core/GCDWebServerPlatform.h	2026-10-14 19:03:05
 @@ -0,0 +1,38 @@
 +/*
 + ODataStore port: what differs between POSIX (Linux, macOS, iOS) and Windows,
@@ -2403,7 +2426,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerPlatform.h GCDWebServer-ported/Cor
 +NS_ASSUME_NONNULL_END
 diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerPrivate.h GCDWebServer-ported/Core/GCDWebServerPrivate.h
 --- GCDWebServer-3.5.4/Core/GCDWebServerPrivate.h	2026-10-14 18:58:29
-+++ GCDWebServer-ported/Core/GCDWebServerPrivate.h	2026-10-14 18:58:29
++++ GCDWebServer-ported/Core/GCDWebServerPrivate.h	2026-10-14 19:03:05
 @@ -26,8 +26,9 @@
   */
  
@@ -2471,7 +2494,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerPrivate.h GCDWebServer-ported/Core
  @end
 diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerResponse.m GCDWebServer-ported/Core/GCDWebServerResponse.m
 --- GCDWebServer-3.5.4/Core/GCDWebServerResponse.m	2026-10-14 18:58:29
-+++ GCDWebServer-ported/Core/GCDWebServerResponse.m	2026-10-14 18:58:29
++++ GCDWebServer-ported/Core/GCDWebServerResponse.m	2026-10-14 19:03:05
 @@ -215,6 +215,7 @@
  }
  
@@ -2482,7 +2505,7 @@ diff -ruN GCDWebServer-3.5.4/Core/GCDWebServerResponse.m GCDWebServer-ported/Cor
      [_reader asyncReadDataWithCompletion:[block copy]];
 diff -ruN GCDWebServer-3.5.4/Requests/GCDWebServerFileRequest.m GCDWebServer-ported/Requests/GCDWebServerFileRequest.m
 --- GCDWebServer-3.5.4/Requests/GCDWebServerFileRequest.m	2026-10-14 18:58:29
-+++ GCDWebServer-ported/Requests/GCDWebServerFileRequest.m	2026-10-14 18:58:29
++++ GCDWebServer-ported/Requests/GCDWebServerFileRequest.m	2026-10-14 19:03:05
 @@ -47,7 +47,7 @@
  }
  
@@ -2494,7 +2517,7 @@ diff -ruN GCDWebServer-3.5.4/Requests/GCDWebServerFileRequest.m GCDWebServer-por
        *error = GCDWebServerMakePosixError(errno);
 diff -ruN GCDWebServer-3.5.4/Requests/GCDWebServerMultiPartFormRequest.m GCDWebServer-ported/Requests/GCDWebServerMultiPartFormRequest.m
 --- GCDWebServer-3.5.4/Requests/GCDWebServerMultiPartFormRequest.m	2026-10-14 18:58:29
-+++ GCDWebServer-ported/Requests/GCDWebServerMultiPartFormRequest.m	2026-10-14 18:58:29
++++ GCDWebServer-ported/Requests/GCDWebServerMultiPartFormRequest.m	2026-10-14 19:03:05
 @@ -208,7 +208,7 @@
            }
          } else if (_fileName) {
@@ -2506,7 +2529,7 @@ diff -ruN GCDWebServer-3.5.4/Requests/GCDWebServerMultiPartFormRequest.m GCDWebS
            } else {
 diff -ruN GCDWebServer-3.5.4/Responses/GCDWebServerFileResponse.m GCDWebServer-ported/Responses/GCDWebServerFileResponse.m
 --- GCDWebServer-3.5.4/Responses/GCDWebServerFileResponse.m	2026-10-14 18:58:29
-+++ GCDWebServer-ported/Responses/GCDWebServerFileResponse.m	2026-10-14 18:58:29
++++ GCDWebServer-ported/Responses/GCDWebServerFileResponse.m	2026-10-14 19:03:05
 @@ -29,8 +29,6 @@
  #error GCDWebServer requires ARC
  #endif
@@ -2567,7 +2590,7 @@ diff -ruN GCDWebServer-3.5.4/Responses/GCDWebServerFileResponse.m GCDWebServer-p
        *error = GCDWebServerMakePosixError(errno);
 diff -ruN GCDWebServer-3.5.4/Responses/GCDWebServerStreamedResponse.m GCDWebServer-ported/Responses/GCDWebServerStreamedResponse.m
 --- GCDWebServer-3.5.4/Responses/GCDWebServerStreamedResponse.m	2026-10-14 18:58:29
-+++ GCDWebServer-ported/Responses/GCDWebServerStreamedResponse.m	2026-10-14 18:58:29
++++ GCDWebServer-ported/Responses/GCDWebServerStreamedResponse.m	2026-10-14 19:03:05
 @@ -38,14 +38,17 @@
  @dynamic contentType;
  

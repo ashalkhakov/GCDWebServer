@@ -658,7 +658,7 @@ NS_ASSUME_NONNULL_END
 
 static inline NSUInteger _ScanHexNumber(const void* bytes, NSUInteger size) {
   char buffer[size + 1];
-  bcopy(bytes, buffer, size);
+  memmove(buffer, bytes, size);  // ODataStore port: bcopy() is BSD's, not Windows'
   buffer[size] = 0;
   char* end = NULL;
   long result = strtol(buffer, &end, 16);
@@ -793,11 +793,11 @@ static inline NSUInteger _ScanHexNumber(const void* bytes, NSUInteger size) {
             return;
           }
           char* ptr = (char*)[(NSMutableData*)chunk mutableBytes];
-          bcopy(hexString, ptr, hexLength);
+          memmove(ptr, hexString, hexLength);  // ODataStore port: bcopy() is BSD's
           ptr += hexLength;
           *ptr++ = '\r';
           *ptr++ = '\n';
-          bcopy(data.bytes, ptr, data.length);
+          memmove(ptr, data.bytes, data.length);  // ODataStore port: bcopy() is BSD's
           ptr += data.length;
           *ptr++ = '\r';
           *ptr = '\n';
