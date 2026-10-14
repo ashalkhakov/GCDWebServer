@@ -50,4 +50,5 @@ after-uninstall::
 
 check::
 	$(MAKE) -C Tests/GNUstep
-	LD_LIBRARY_PATH="$(CURDIR)/obj$${LD_LIBRARY_PATH:+:$$LD_LIBRARY_PATH}" ./Tests/GNUstep/obj/gws-smoke
+	LD_LIBRARY_PATH="$(CURDIR)/obj$${LD_LIBRARY_PATH:+:$$LD_LIBRARY_PATH}" \
+	PATH="$(CURDIR)/obj:$$PATH" ./Tests/GNUstep/obj/gws-smoke
