@@ -11,8 +11,12 @@
 
 #import "GCDWebServerPrivate.h"
 
+// iphlpapi.h reaches COM's headers (through ras.h), which use the macro
+// interface that gnustep-base undefines for Objective-C's @interface: defined
+// here as Windows' own headers define it, for them alone.
+#define interface struct
 #include <iphlpapi.h>
-#include <windows.h>
+#undef interface
 
 static void _StartWinsock(void* context) {
   WSADATA data;
